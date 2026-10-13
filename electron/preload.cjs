@@ -4,6 +4,14 @@ contextBridge.exposeInMainWorld("piDesktop", {
     minimize: () => ipcRenderer.send("window:minimize"),
     toggleMaximize: () => ipcRenderer.send("window:toggle-maximize"),
     close: () => ipcRenderer.send("window:close"),
+    getSandboxStatus: () => ipcRenderer.invoke("sandbox:get-status"),
+    setSandboxEnabled: (enabled) => ipcRenderer.invoke("sandbox:set-enabled", enabled),
+    installSandbox: () => ipcRenderer.invoke("sandbox:install"),
+    onSandboxStatus: (callback) => {
+        const listener = (_event, payload) => callback(payload);
+        ipcRenderer.on("sandbox:status", listener);
+        return () => ipcRenderer.removeListener("sandbox:status", listener);
+    },
     startTerminal: () => ipcRenderer.invoke("terminal:start"),
     writeTerminal: (command) => ipcRenderer.invoke("terminal:write", command),
     stopTerminal: () => ipcRenderer.invoke("terminal:stop"),

@@ -2,7 +2,7 @@
 
 Electron workspace for the Pi coding agent. The shell includes the main workspace, diff review, settings, onboarding, model-credential states, and the branch switcher. Copy and layout follow the Stitch screens. Conversation sessions and credentials use Pi's local storage; some git and review screens still use placeholders.
 
-The target architecture below is locked. This slice wires the per-window RPC loop and a real credentials page over Pi AuthStorage. The sandbox is still not enabled.
+The target architecture below is locked. This slice wires the per-window RPC loop and a real credentials page over Pi AuthStorage. Command isolation can now be enabled per window in Settings → Permissions.
 
 ## Architecture
 
@@ -14,13 +14,25 @@ Closing a window kills that RPC child; the conversation remains in Pi's session 
 
 ### Sandbox
 
-Command isolation uses Anthropic’s sandbox, `@anthropic-ai/sandbox-runtime` (ASRT). That package is the cross-platform path for v1. Windows support is alpha. The UAC install is optional and cancelable. The sandbox is not built into Pi by default.
+Command isolation uses [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropics/sandbox-runtime), pinned to `0.0.78`. In the desktop window, open **Settings → Permissions → 启用沙盒**. It is off by default; the current window keeps its choice until it closes. Switching workspaces carries the enabled policy to the new workspace with a fresh runtime.
 
-UI chrome never shows the package names ASRT, srt, or Gondolin. Product copy says 「沙盒」.
+The Pi extension replaces the `bash` backend (and `powershell` on Windows), including user Bash commands. The built-in terminal starts a separate isolated shell. Each Pi/terminal process owns its runtime and proxy lifecycle. Commands are launched using `wrapWithSandboxArgv()` and `shell: false`, preserve streaming output, and terminate on abort or timeout. The renderer receives status through IPC and never supplies sandbox policy or executable paths.
 
-Scope for now is `bash` / command isolation. The workspace stays writable. The sandbox blocks writes outside the workspace and casual egress.
+The workspace and a dedicated temporary directory are writable; the runtime also grants its required device and temporary paths. External writes are restricted. The network allowlist is empty, so shell commands cannot access the internet. Sensitive credential paths, project `.env` files, agent configuration, and this app's execution code are protected. Shell children receive a limited environment without model keys or host startup hooks. Model API requests stay in the Pi host process, outside command isolation.
 
-Capability is `unsupported`, `available`, or `enabled`. Windows is not hardcoded as `unsupported`.
+**Scope:** command execution only. Pi's native file-editing tools, Git UI operations, and MCP servers are outside this sandbox. UI copy says 「沙盒」. This command sandbox is separate from Electron's Chromium renderer sandbox; `ELECTRON_NO_SANDBOX` only affects Chromium.
+
+macOS uses the system sandbox. Linux needs Bubblewrap, socat, and ripgrep, with working user namespaces; install them using your system package manager. Windows support is alpha and needs the runtime's system account and network filter components. **安装沙盒组件** opens a cancelable confirmation and UAC flow; nothing is installed automatically. Windows currently permits sandboxed windows for one workspace at a time because the runtime shares a sandbox account. Sandbox initialization uses native system commands and does not require Git Bash. Executing Bash commands requires native Git Bash; PowerShell tools and the built-in cmd terminal can run without it. WSL and Docker are not required.
+
+If the app reports a missing sandbox package, run `npm install` in the project directory using your desktop operating system (Windows PowerShell for a Windows app), then fully quit and restart Electron. Declaring dependencies or updating only the lockfile does not install them. If npm reports `EAI_AGAIN` or `ENOTFOUND`, resolve the registry connection/DNS issue and retry. This npm dependency step is separate from the Windows **安装沙盒组件** system setup.
+
+Enable/disable waits for an idle engine, restarts its RPC process while preserving the selected session, and restarts an open terminal. The host requires an authenticated readiness notification from the extension after an actual isolated command succeeds. Initialization or wrapping failure blocks commands; it never silently executes them outside the requested sandbox. Normal RPC startup has a 30-second deadline; sandbox activation has a 90-second deadline and its validation command has a 10-second timeout. Failure is shown in the workspace and settings. Cleanup after a failed startup never triggers an automatic reconnect; an established connection gets at most one retry for rapid repeated exits. Escape during activation requests cancellation. Browser-only previews retain sample states; URL query parameters cannot enable isolation in Electron.
+
+```bash
+npm run test:sandbox             # Policy and lifecycle smoke tests using an injected runtime
+npm run test:sandbox:integration # Actual OS restrictions; requires installed runtime and system dependencies
+npm run test:rpc-reconnect       # Failed startup cleanup, deadlines, retry limits, and Windows without Git Bash
+```
 
 ### Credentials
 
@@ -35,7 +47,7 @@ The app bundles a standalone `pi`, built with build-binaries, into `extraResourc
 1. UI shell first. Done.
 2. Credentials IPC. `#/credentials` lists every built-in provider and can save, clear, detect env keys, and start OAuth. The screen is no longer a static mock.
 3. Real RpcClient spawn. The minimal per-window loop (spawn, `get_state`, `prompt`, stream, stop) is in.
-4. Optional ASRT enable flow. Not in this slice.
+4. Optional command sandbox. Available through Settings → Permissions, with live state and Windows installation flow.
 
 ## Requirements
 
@@ -204,7 +216,7 @@ Workspace, diff, and settings use the 24px footer from those screens: `Git: main
 | 引擎 · RPC | 空闲 · 已连接 / 对话中 / 重连中 / 已断开. Each chip keeps the subtitle 每窗口独立进程. Click one to mark it active. |
 | 沙盒 | Grey **沙盒 · 未启用**, in-progress **沙盒 · 正在启用**, or bright **沙盒 · 命令隔离**. |
 
-Click the sandbox chip to cycle the stub. Press Escape during **正在启用** to return to grey **沙盒 · 未启用**. That cancel does not open a dialog. Hover the chip while it is on for the 沙盒隔离策略 note. `#/engine?policy=1` (or `?policy=1`) opens that note when the sandbox is on. The default is idle and sandbox off.
+In Electron, click the sandbox chip to change the real command-isolation setting. Installation and diagnostic details are in Settings → Permissions. In browser previews the chip cycles sample states. Press Escape during **正在启用** to request cancellation. Hover the chip while it is on for the 沙盒隔离策略 note. `#/engine?policy=1` (or `?policy=1`) opens that note when the sandbox is on. The default is idle and sandbox off.
 
 Query overrides live in the hash, and the same keys in `location.search` still apply. A hash key wins when both set it.
 
@@ -215,4 +227,4 @@ Query overrides live in the hash, and the same keys in `location.search` still a
 #/engine?sandbox=on&policy=1
 ```
 
-`engine` is `idle`, `chatting`, `reconnecting`, or `disconnected`. `sandbox` is `off`, `enabling`, or `on`. Changing the hash re-reads `engine`, `sandbox`, `dirty`, and `policy` without a reload.
+`engine` is `idle`, `chatting`, `reconnecting`, or `disconnected`. `sandbox` is `off`, `enabling`, or `on`. Changing the hash re-reads sample `engine`, `sandbox`, `dirty`, and `policy` values without a reload. Electron sandbox state comes only from the main process.

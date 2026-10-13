@@ -11,6 +11,7 @@ interface MainShellLayoutProps {
     contentPadClass: string;
     showTerminal: boolean;
     terminalCwd: string;
+    terminalSandboxState?: string;
     onCloseTerminal: () => void;
     children: ReactNode;
 }
@@ -21,6 +22,7 @@ export function MainShellLayout({
     contentPadClass,
     showTerminal,
     terminalCwd,
+    terminalSandboxState,
     onCloseTerminal,
     children,
 }: MainShellLayoutProps) {
@@ -46,7 +48,7 @@ export function MainShellLayout({
                             onDelta={(dx) => terminal.setWidth((current) => current - dx)}
                             onReset={terminal.reset}
                         />
-                        <TerminalPanel cwd={terminalCwd} width={terminal.width} onClose={onCloseTerminal} />
+                        <TerminalPanel cwd={terminalCwd} sandboxState={terminalSandboxState} width={terminal.width} onClose={onCloseTerminal} />
                     </>
                 ) : null}
             </div>

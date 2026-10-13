@@ -21,6 +21,8 @@
 - `npm run build`：检查类型并将渲染界面构建到 `dist/`。
 - `npm start`：构建并启动 Electron。
 - `npm run test:git` / `npm run test:mcp`：运行 Git 和 MCP 冒烟测试。
+- `npm run test:sandbox`：验证隔离策略、失败阻断、超时、取消及 RPC 重启；`npm run test:sandbox:integration`：在已安装系统依赖的机器上验证真实隔离。
+- `npm run test:rpc-reconnect`：验证启动失败清理、连接超时、重试上限及 Windows 无 Git Bash 时的沙盒初始化。
 
 ## 代码风格与命名约定
 

@@ -4,11 +4,16 @@ import type { CredentialBroadcast, EnvHit, ModelSettings, OAuthEvent, ProviderIn
 import type { EngineSnapshot, PromptResult, RpcWireEvent, SessionSummary, SessionView, WorkspaceActionResult, WorkspaceState } from "./rpc/types";
 import type { GitResult, GitStatus } from "./git/types";
 import type { McpActionResult, McpServer, McpTestResult } from "./mcp/types";
+import type { SandboxActionResult, SandboxSnapshot } from "./sandbox/types";
 
 export interface PiDesktopApi {
     minimize: () => void;
     toggleMaximize: () => void;
     close: () => void;
+    getSandboxStatus: () => Promise<SandboxSnapshot>;
+    setSandboxEnabled: (enabled: boolean) => Promise<SandboxActionResult>;
+    installSandbox: () => Promise<SandboxActionResult>;
+    onSandboxStatus: (callback: (status: SandboxSnapshot) => void) => () => void;
     startTerminal: () => Promise<{ ok: boolean; cwd?: string; message?: string }>;
     writeTerminal: (command: string) => Promise<{ ok: boolean; message?: string }>;
     stopTerminal: () => Promise<{ ok: boolean }>;

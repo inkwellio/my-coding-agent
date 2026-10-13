@@ -7,6 +7,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createSandboxHandshake, SANDBOX_ENV } from "./sandbox-execution.mjs";
 
 const emptyCredentials = {
     configured: false,
@@ -228,8 +229,20 @@ const IDLE_CHECK_EVENTS = new Set([
 ]);
 
 const STREAM_POLL_MS = 1000;
+const RPC_START_TIMEOUT_MS = 30_000;
+const SANDBOX_START_TIMEOUT_MS = 90_000;
+const STABLE_CONNECTION_MS = 10_000;
 
-export function createWindowSession({ webContentsId, cwd, cwdWarning, send, RpcClientCtor }) {
+function waitForStartup(promise, signal) {
+    return new Promise((resolveWait, reject) => {
+        const abort = () => reject(signal.reason || new Error("引擎启动已取消"));
+        signal.addEventListener("abort", abort, { once: true });
+        Promise.resolve(promise).then(resolveWait, reject).finally(() => signal.removeEventListener("abort", abort));
+        if (signal.aborted) abort();
+    });
+}
+
+export function createWindowSession({ webContentsId, cwd, cwdWarning, send, RpcClientCtor, sandboxOptions = null, startupTimeoutMs, credentialReader = readCredentialStatus }) {
     let client = null;
     let activeSessionFile = null;
     let changingSession = false;
@@ -243,6 +256,10 @@ export function createWindowSession({ webContentsId, cwd, cwdWarning, send, RpcC
     let stateCheckQueued = false;
     let queuedAllowIdle = false;
     let startPromise = null;
+    let startingClient = null;
+    let startupController = null;
+    let connectedAt = 0;
+    const stoppingClients = new Map();
     let promptBusy = false;
     let engine = "reconnecting";
     let pid = null;
@@ -276,6 +293,25 @@ export function createWindowSession({ webContentsId, cwd, cwdWarning, send, RpcC
         } catch {
             // IPC can throw if the frame was disposed between the destroyed check and send.
         }
+    }
+
+    function failureDetail(error, rpc) {
+        const message = error instanceof Error ? error.message : String(error);
+        let stderr = "";
+        try { stderr = rpc?.getStderr?.() || ""; } catch { /* The process may already be disposed. */ }
+        return scrubSecrets(message + (stderr && !message.includes(stderr) ? `\n${stderr}` : "")).slice(0, 500);
+    }
+
+    function stopClient(rpc) {
+        if (!rpc) return Promise.resolve();
+        if (stoppingClients.has(rpc)) return stoppingClients.get(rpc);
+        let timer;
+        const pending = Promise.race([
+            Promise.resolve().then(() => rpc.stop()).catch(() => {}),
+            new Promise((done) => { timer = setTimeout(done, 2000); }),
+        ]).finally(() => { clearTimeout(timer); stoppingClients.delete(rpc); });
+        stoppingClients.set(rpc, pending);
+        return pending;
     }
 
     function stopPoll() {
@@ -368,14 +404,15 @@ export function createWindowSession({ webContentsId, cwd, cwdWarning, send, RpcC
         }
     }
 
-    function scheduleRestart() {
+    function scheduleRestart(error) {
         stopPoll();
         promptBusy = false;
         if (stopping) return;
+        if (connectedAt && Date.now() - connectedAt >= STABLE_CONNECTION_MS) restarts = 0;
         if (restarts >= 1) {
             engine = "disconnected";
             pid = null;
-            detail = "RPC 进程已退出";
+            detail = error || "RPC 进程已退出";
             publish();
             return;
         }
@@ -384,115 +421,133 @@ export function createWindowSession({ webContentsId, cwd, cwdWarning, send, RpcC
         pid = null;
         detail = "正在重新连接";
         publish();
-        restartTimer = setTimeout(() => {
+        const gen = generation;
+        restartTimer = setTimeout(async () => {
             restartTimer = null;
-            if (!stopping) void start();
+            if (startPromise) await startPromise;
+            if (!stopping && gen === generation && !ready) void start();
         }, 400);
     }
 
     async function runStart() {
         const gen = ++generation;
+        const controller = new AbortController();
+        startupController = controller;
+        const timeoutMs = startupTimeoutMs ?? (sandboxOptions ? SANDBOX_START_TIMEOUT_MS : RPC_START_TIMEOUT_MS);
+        const timer = setTimeout(() => controller.abort(new Error(sandboxOptions
+            ? "沙盒启动超时，请检查系统组件和工作区访问权限，或在设置中关闭沙盒后重试"
+            : "引擎启动超时，请检查 Pi 运行依赖和工作区配置")), timeoutMs);
+        let rpc = null;
+        let sandboxHandshake = null;
+        let disposing = false;
         stopPoll();
         promptBusy = false;
         engine = "reconnecting";
         ready = false;
         pid = null;
+        detail = sandboxOptions ? `正在准备沙盒命令隔离，最长等待 ${Math.ceil(timeoutMs / 1000)} 秒` : "正在连接引擎";
         publish();
 
-        let RpcClient = RpcClientCtor;
-        let creds;
         try {
-            [RpcClient, creds] = await Promise.all([
-                RpcClient ? Promise.resolve(RpcClient) : import("@earendil-works/pi-coding-agent").then((module) => module.RpcClient),
-                readCredentialStatus(),
-            ]);
-        } catch (error) {
+            const [RpcClient, creds] = await waitForStartup(Promise.all([
+                RpcClientCtor ? Promise.resolve(RpcClientCtor) : import("@earendil-works/pi-coding-agent").then((module) => module.RpcClient),
+                credentialReader(),
+            ]), controller.signal);
+            credentials = creds;
             if (gen !== generation || stopping) return;
-            engine = "disconnected";
-            detail = scrubSecrets(error instanceof Error ? error.message : String(error)).slice(0, 240);
-            publish();
-            return;
-        }
-        credentials = creds;
-        if (gen !== generation || stopping) return;
 
-        const cliPath = resolvePiCli();
-        if (!cliPath) {
-            engine = "disconnected";
-            detail = "找不到 pi。安装依赖，或把 Node 版 pi 放到 PATH / PI_CLI。";
-            publish();
-            return;
-        }
+            const cliPath = resolvePiCli();
+            if (!cliPath) throw new Error("找不到 pi。安装依赖，或把 Node 版 pi 放到 PATH / PI_CLI。");
+            rpc = new RpcClient({
+                cliPath,
+                cwd,
+                // Preserve the selected Pi session across sandbox and MCP restarts.
+                args: [
+                    ...(activeSessionFile && fileExists(activeSessionFile) ? ["--session", activeSessionFile] : ["--continue"]),
+                    ...(sandboxOptions ? ["--extension", fileURLToPath(new URL("./sandbox-extension.mjs", import.meta.url))] : []),
+                ],
+                env: {
+                    ...process.env,
+                    PI_SKIP_VERSION_CHECK: process.env.PI_SKIP_VERSION_CHECK ?? "1",
+                    PI_TELEMETRY: process.env.PI_TELEMETRY ?? "0",
+                    [SANDBOX_ENV]: sandboxOptions ? JSON.stringify(sandboxOptions) : "",
+                },
+            });
+            startingClient = rpc;
+            sandboxHandshake = sandboxOptions ? createSandboxHandshake(sandboxOptions.token, timeoutMs) : null;
+            sandboxHandshake?.ready.catch((error) => controller.abort(error));
+            rpc.onEvent((event) => {
+                if (gen !== generation || stopping || disposing) return;
+                if (sandboxHandshake?.handleEvent(event)) return;
+                if (sandboxOptions && event?.type === "extension_error" && String(event.extensionPath || "").replaceAll("\\", "/").endsWith("/sandbox-extension.mjs")) {
+                    controller.abort(new Error(`沙盒扩展失败：${event.error || "未知错误"}`));
+                    return;
+                }
+                try {
+                    handleEvent(event);
+                } catch (error) {
+                    detail = failureDetail(error, rpc);
+                    publish();
+                }
+            });
 
-        const rpc = new RpcClient({
-            cliPath,
-            cwd,
-            // Pi keeps its default per-working-directory JSONL files in the user's home directory.
-            args: [
-                ...(activeSessionFile && fileExists(activeSessionFile) ? ["--session", activeSessionFile] : ["--continue"]),
-            ],
-            env: {
-                ...process.env,
-                PI_SKIP_VERSION_CHECK: process.env.PI_SKIP_VERSION_CHECK ?? "1",
-                PI_TELEMETRY: process.env.PI_TELEMETRY ?? "0",
-            },
-        });
-        rpc.onEvent((event) => {
-            if (gen !== generation || stopping) return;
-            try {
-                handleEvent(event);
-            } catch (error) {
-                detail = scrubSecrets(error instanceof Error ? error.message : String(error)).slice(0, 240);
-                publish();
-            }
-        });
-
-        try {
-            await rpc.start();
-            if (gen !== generation || stopping) {
-                await rpc.stop();
-                return;
-            }
+            const starting = rpc.start();
+            Promise.resolve(starting).then(() => {
+                if (controller.signal.aborted || gen !== generation || stopping) void stopClient(rpc);
+            }, () => {});
+            await waitForStartup(starting, controller.signal);
+            if (gen !== generation || stopping) { await stopClient(rpc); return; }
             client = rpc;
             pid = rpc.process?.pid ?? null;
             const child = rpc.process;
-            child?.once("exit", () => {
-                if (gen !== generation || stopping) return;
+            child?.once("exit", (code, signal) => {
+                if (gen !== generation || stopping || disposing) return;
+                const message = failureDetail(new Error(`RPC 进程已退出（代码 ${code ?? "未知"}，信号 ${signal || "无"}）`), rpc);
+                const connected = ready;
                 client = null;
                 pid = null;
                 ready = false;
-                scheduleRestart();
+                if (!connected) controller.abort(new Error(message));
+                else scheduleRestart(message);
             });
-            const state = await rpc.getState();
+            if (child && child.exitCode !== undefined && child.exitCode !== null) {
+                throw new Error(`RPC 进程在启动时退出（代码 ${child.exitCode}）`);
+            }
+            // Pi binds extensions before accepting RPC input; wait for sandbox validation first.
+            if (sandboxHandshake) await waitForStartup(sandboxHandshake.ready, controller.signal);
+            const state = await waitForStartup(rpc.getState(), controller.signal);
             if (gen !== generation || stopping) return;
             activeSessionFile = typeof state?.sessionFile === "string" ? state.sessionFile : null;
             modelLabel = modelLabelFrom(state);
             ready = true;
-            restarts = 0;
+            connectedAt = Date.now();
             engine = state?.isStreaming ? "chatting" : "idle";
             detail = credentials.configured ? cwdWarning : "已连接。模型凭据未配置，发送前请打开凭据页。";
             publish();
         } catch (error) {
-            if (gen !== generation || stopping) return;
-            client = null;
-            pid = null;
-            ready = false;
-            engine = "disconnected";
-            const stderr = typeof rpc.getStderr === "function" ? rpc.getStderr() : "";
-            const message = error instanceof Error ? error.message : String(error);
-            detail = scrubSecrets(stderr || message).slice(0, 240);
-            publish();
-            try {
-                await rpc.stop();
-            } catch {
-                // The child is already gone.
+            disposing = true;
+            if (gen === generation && !stopping) {
+                client = null;
+                pid = null;
+                ready = false;
+                engine = "disconnected";
+                detail = failureDetail(error, rpc);
+                publish();
             }
+            // Stopping a failed startup must not trigger another reconnect or replace its error.
+            await stopClient(rpc);
+        } finally {
+            clearTimeout(timer);
+            sandboxHandshake?.dispose();
+            if (startingClient === rpc) startingClient = null;
+            if (startupController === controller) startupController = null;
         }
     }
 
     function start() {
         if (stopping) return Promise.resolve();
         if (startPromise) return startPromise;
+        if (ready && client) return Promise.resolve();
         startPromise = runStart().finally(() => {
             startPromise = null;
         });
@@ -502,6 +557,7 @@ export function createWindowSession({ webContentsId, cwd, cwdWarning, send, RpcC
     async function stop() {
         stopping = true;
         generation += 1;
+        startupController?.abort(new Error("引擎启动已取消"));
         stopPoll();
         promptBusy = false;
         stateCheckQueued = false;
@@ -510,14 +566,15 @@ export function createWindowSession({ webContentsId, cwd, cwdWarning, send, RpcC
             clearTimeout(restartTimer);
             restartTimer = null;
         }
-        const current = client;
+        const current = client || startingClient;
         client = null;
         pid = null;
         ready = false;
         engine = "disconnected";
         detail = null;
         publish();
-        if (current) await current.stop();
+        await stopClient(current);
+        if (startPromise) await startPromise;
     }
 
     async function reloadMcp() {
@@ -526,16 +583,35 @@ export function createWindowSession({ webContentsId, cwd, cwdWarning, send, RpcC
             return { ok: false, message: "请等待当前回答结束后再重载 MCP 工具" };
         }
         const current = client;
+        if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
+        restarts = 0;
         generation += 1;
         client = null;
         ready = false;
         pid = null;
         stopPoll();
-        if (current) {
-            try { await current.stop(); } catch { /* Restart even if the old process already exited. */ }
-        }
+        await stopClient(current);
         await start();
         return { ok: ready, message: ready ? undefined : detail || "MCP 工具重载失败" };
+    }
+
+    async function setSandbox(options) {
+        if (startPromise) await startPromise;
+        if (stopping || changingSession || promptBusy || engine === "chatting") {
+            return { ok: false, message: "请等待当前回答结束后再修改沙盒设置", unchanged: true };
+        }
+        if (client && ready) {
+            try {
+                const state = await client.getState();
+                if (state?.isStreaming) return { ok: false, message: "请等待当前回答结束后再修改沙盒设置", unchanged: true };
+                activeSessionFile = typeof state?.sessionFile === "string" ? state.sessionFile : activeSessionFile;
+            } catch {
+                return { ok: false, message: "无法确认引擎状态，请稍后重试", unchanged: true };
+            }
+        }
+        sandboxOptions = options;
+        // A failed isolated restart retains the policy and keeps the engine disconnected.
+        return reloadMcp();
     }
 
     async function prompt(message) {
@@ -548,7 +624,7 @@ export function createWindowSession({ webContentsId, cwd, cwdWarning, send, RpcC
         promptBusy = true;
         const gen = generation;
         try {
-            credentials = await readCredentialStatus();
+            credentials = await credentialReader();
             publish();
             if (!credentials.configured) {
                 return { ok: false, code: "credentials", href: "#/credentials" };
@@ -781,6 +857,7 @@ export function createWindowSession({ webContentsId, cwd, cwdWarning, send, RpcC
         getSessionView,
         changeSession,
         reloadMcp,
+        setSandbox,
         isStopping: () => stopping,
     };
 }

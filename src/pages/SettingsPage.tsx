@@ -7,6 +7,8 @@ import { useRpc } from "../rpc/RpcProvider";
 import { applyThemePreset, readThemePreset, type ThemePreset } from "../theme";
 import { KeybindingsPanel } from "./KeybindingsPanel";
 import { McpPanel } from "./McpPanel";
+import { SandboxPanel } from "../components/SandboxPanel";
+import type { SandboxController } from "../hooks/useSandbox";
 
 function compactTokens(tokens: number) {
     if (tokens >= 1_000_000) return `${Number((tokens / 1_000_000).toFixed(1))}M`;
@@ -35,7 +37,7 @@ function navItemClass(active: boolean) {
         : "w-full flex items-center gap-space-sm px-space-md py-2.5 rounded text-left transition-all text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface group";
 }
 
-export function SettingsPage() {
+export function SettingsPage({ sandboxController }: { sandboxController: SandboxController }) {
     const board = useCredentialBoard();
     const flashModelId = board.providers.find((provider) => provider.id === "deepseek")?.flashModelId ?? null;
     const [themePreset, setThemePresetState] = useState<ThemePreset>(readThemePreset);
@@ -386,167 +388,7 @@ export function SettingsPage() {
                     </div>
                 </section>
                 ) : null}
-                {activeDomain === "permissions" ? (
-                <section className="flex flex-col gap-space-md bg-surface-container-low p-space-xl rounded-xl shadow-sm">
-                    <div className="flex items-center justify-between pb-space-xs">
-                        <div className="flex items-center gap-space-sm">
-                            <Icon name="security" className="text-tertiary text-[20px]" />
-                            <h2 className="font-headline-sm text-headline-sm font-semibold text-on-surface">
-                                安全与命令执行权限 (Security Sandbox)
-                            </h2>
-                        </div>
-                        <span className="font-code-sm text-code-sm px-2 py-0.5 rounded bg-tertiary-container/20 text-tertiary font-medium">
-                            Policy: Strict Read-Safe
-                        </span>
-                    </div>
-                    {/* Radio List */}
-                    <div className="flex flex-col gap-space-sm">
-                        <label className="font-label-sm text-label-sm text-on-surface-variant uppercase font-semibold">
-                            终端命令执行策略 Execution Policy
-                        </label>
-                        {/* Policy 1 (Recommended) */}
-                        <label className="flex items-start gap-space-md p-space-md rounded-lg bg-surface-container-high cursor-pointer transition-colors group">
-                            <div className="pt-0.5">
-                                <div className="w-4 h-4 rounded-full bg-primary flex items-center justify-center text-on-primary">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-surface-container-lowest">
-                                    </span>
-                                </div>
-                            </div>
-                            <div className="flex flex-col gap-0.5">
-                                <div className="flex items-center gap-2">
-                                    <span className="font-label-md text-label-md font-semibold text-on-surface">
-                                        自动执行低风险只读命令，破坏性写操作需弹窗确认
-                                    </span>
-                                    <span className="font-code-sm text-code-sm px-1.5 py-0.2 rounded bg-tertiary-container/30 text-tertiary font-medium">
-                                        推荐
-                                    </span>
-                                </div>
-                                <p className="font-body-sm text-body-sm text-on-surface-variant">
-                                    允许 Agent 自主执行 
-                                    <code className="font-code-sm text-code-sm text-secondary bg-surface-container px-1 py-0.5 rounded">
-                                        git status
-                                    </code>
-                                    , 
-                                    <code className="font-code-sm text-code-sm text-secondary bg-surface-container px-1 py-0.5 rounded">
-                                        cat
-                                    </code>
-                                    , 
-                                    <code className="font-code-sm text-code-sm text-secondary bg-surface-container px-1 py-0.5 rounded">
-                                        ls
-                                    </code>
-                                    , 
-                                    <code className="font-code-sm text-code-sm text-secondary bg-surface-container px-1 py-0.5 rounded">
-                                        npm test
-                                    </code>
-                                    。涉及文件写入、删除或网络上传前挂起并通知用户。
-                                </p>
-                            </div>
-                        </label>
-                        {/* Policy 2 */}
-                        <label className="flex items-start gap-space-md p-space-md rounded-lg bg-surface-container hover:bg-surface-container-high cursor-pointer transition-colors group">
-                            <div className="pt-0.5">
-                                <div className="w-4 h-4 rounded-full bg-surface-variant flex items-center justify-center group-hover:bg-outline-variant">
-                                </div>
-                            </div>
-                            <div className="flex flex-col gap-0.5">
-                                <div className="flex items-center gap-2">
-                                    <span className="font-label-md text-label-md font-medium text-on-surface">
-                                        完全自主模式 (Autonomous Full Velocity)
-                                    </span>
-                                    <span className="font-code-sm text-code-sm px-1.5 py-0.2 rounded bg-error-container text-error font-medium">
-                                        高权限风险
-                                    </span>
-                                </div>
-                                <p className="font-body-sm text-body-sm text-outline">
-                                    所有终端命令及依赖安装直接后台执行。严格要求在独立 Docker 容器或临时 VM 中运行，防止宿主环境污染。
-                                </p>
-                            </div>
-                        </label>
-                        {/* Policy 3 */}
-                        <label className="flex items-start gap-space-md p-space-md rounded-lg bg-surface-container hover:bg-surface-container-high cursor-pointer transition-colors group">
-                            <div className="pt-0.5">
-                                <div className="w-4 h-4 rounded-full bg-surface-variant flex items-center justify-center group-hover:bg-outline-variant">
-                                </div>
-                            </div>
-                            <div className="flex flex-col gap-0.5">
-                                <div className="flex items-center gap-2">
-                                    <span className="font-label-md text-label-md font-medium text-on-surface">
-                                        严格审批模式 (Zero Trust Step-by-step)
-                                    </span>
-                                </div>
-                                <p className="font-body-sm text-body-sm text-outline">
-                                    Agent 构想的每一次命令执行、单行 diff 补丁生成与环境探测均需逐条人工敲击 ↵ 确认。
-                                </p>
-                            </div>
-                        </label>
-                    </div>
-                    {/* Sensitive File Whitelist */}
-                    <div className="flex flex-col gap-space-xs pt-space-xs">
-                        <label className="font-label-sm text-label-sm text-on-surface-variant uppercase font-semibold">
-                            敏感文件保护白名单 Sensitive File Guards
-                        </label>
-                        <div className="p-space-md rounded-lg bg-surface-container flex flex-col gap-space-sm">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <Icon name="lock" className="text-outline text-[16px]" />
-                                    <span className="font-body-sm text-body-sm text-on-surface">
-                                        默认屏蔽读取的环境机密文件：
-                                    </span>
-                                </div>
-                                <span className="font-code-sm text-code-sm text-tertiary">
-                                    已启用模式过滤 (Regex Active)
-                                </span>
-                            </div>
-                            <div className="flex flex-wrap gap-space-xs items-center">
-                                <span className="font-code-sm text-code-sm px-2 py-1 rounded bg-surface-container-high text-on-surface flex items-center gap-1.5">
-                                    <Icon name="key" className="text-[13px] text-error" />
-                                    <span>
-                                        .env
-                                    </span>
-                                    <Icon name="close" className="text-[13px] text-outline hover:text-on-surface cursor-pointer" />
-                                </span>
-                                <span className="font-code-sm text-code-sm px-2 py-1 rounded bg-surface-container-high text-on-surface flex items-center gap-1.5">
-                                    <Icon name="key" className="text-[13px] text-error" />
-                                    <span>
-                                        .env.production
-                                    </span>
-                                    <Icon name="close" className="text-[13px] text-outline hover:text-on-surface cursor-pointer" />
-                                </span>
-                                <span className="font-code-sm text-code-sm px-2 py-1 rounded bg-surface-container-high text-on-surface flex items-center gap-1.5">
-                                    <Icon name="vpn_key" className="text-[13px] text-error" />
-                                    <span>
-                                        id_rsa
-                                    </span>
-                                    <Icon name="close" className="text-[13px] text-outline hover:text-on-surface cursor-pointer" />
-                                </span>
-                                <span className="font-code-sm text-code-sm px-2 py-1 rounded bg-surface-container-high text-on-surface flex items-center gap-1.5">
-                                    <Icon name="vpn_key" className="text-[13px] text-error" />
-                                    <span>
-                                        id_ed25519
-                                    </span>
-                                    <Icon name="close" className="text-[13px] text-outline hover:text-on-surface cursor-pointer" />
-                                </span>
-                                <span className="font-code-sm text-code-sm px-2 py-1 rounded bg-surface-container-high text-on-surface flex items-center gap-1.5">
-                                    <Icon name="description" className="text-[13px] text-outline" />
-                                    <span>
-                                        *.pem
-                                    </span>
-                                    <Icon name="close" className="text-[13px] text-outline hover:text-on-surface cursor-pointer" />
-                                </span>
-                                <button className="h-7 px-2.5 rounded bg-surface-container-highest hover:bg-surface-bright text-on-surface font-label-xs text-label-xs flex items-center gap-1 transition-colors" type="button">
-                                    <Icon name="add" className="text-[14px]" />
-                                    <span>
-                                        添加规则模式
-                                    </span>
-                                </button>
-                            </div>
-                            <span className="font-code-sm text-code-sm text-outline">
-                                Agent 尝试触碰上述路径将立即截断 AST 流，并输出安全合规审计警告。
-                            </span>
-                        </div>
-                    </div>
-                </section>
-                ) : null}
+                {activeDomain === "permissions" ? <SandboxPanel controller={sandboxController} /> : null}
                 {activeDomain === "keybindings" ? <KeybindingsPanel /> : null}
                 {activeDomain === "plugins" ? <McpPanel /> : null}
                 </div>

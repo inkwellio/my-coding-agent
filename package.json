@@ -12,9 +12,13 @@
         "build": "tsc --noEmit && vite build",
         "typecheck": "tsc --noEmit",
         "test:git": "node scripts/git-smoke.mjs",
-        "test:mcp": "node scripts/mcp-smoke.mjs"
+        "test:mcp": "node scripts/mcp-smoke.mjs",
+        "test:sandbox": "node scripts/sandbox-smoke.mjs",
+        "test:sandbox:integration": "node scripts/sandbox-integration-smoke.mjs",
+        "test:rpc-reconnect": "node scripts/rpc-reconnect-smoke.mjs"
     },
     "dependencies": {
+        "@anthropic-ai/sandbox-runtime": "0.0.78",
         "@earendil-works/pi-coding-agent": "^1.1.0",
         "marked": "18.0.11",
         "react": "^19.3.0",

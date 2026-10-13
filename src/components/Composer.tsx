@@ -6,10 +6,11 @@ interface ComposerProps {
     modelLabel?: string | null;
     busy?: boolean;
     guide?: string | null;
+    guideHref?: string | null;
     onSend?: (text: string) => void | boolean | Promise<void | boolean>;
 }
 
-export function Composer({ modelLabel, busy = false, guide, onSend }: ComposerProps) {
+export function Composer({ modelLabel, busy = false, guide, guideHref = "#/credentials", onSend }: ComposerProps) {
     const [text, setText] = useState("");
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const label = modelLabel || "Sonnet-3.5";
@@ -35,9 +36,9 @@ export function Composer({ modelLabel, busy = false, guide, onSend }: ComposerPr
             {guide ? (
                 <div className="mx-auto mb-space-sm flex max-w-5xl flex-wrap items-center gap-space-sm rounded-lg bg-surface-container px-space-md py-space-sm font-body-sm text-body-sm text-on-surface">
                     <span data-credential-gate="open">{guide}</span>
-                    <a href="#/credentials" className="font-medium text-primary hover:underline">
+                    {guideHref ? <a href={guideHref} className="font-medium text-primary hover:underline">
                         打开凭据页
-                    </a>
+                    </a> : null}
                 </div>
             ) : null}
             <div className="mx-auto flex min-h-11 max-w-5xl items-end gap-2 rounded-pill border border-composer-border bg-composer-surface px-3 py-2 shadow-sm transition-colors focus-within:border-composer-border-focus sm:items-center">

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
-export function TerminalPanel({ cwd, width, onClose }: { cwd: string; width: number; onClose: () => void }) {
+export function TerminalPanel({ cwd, sandboxState, width, onClose }: { cwd: string; sandboxState?: string; width: number; onClose: () => void }) {
     const [output, setOutput] = useState("");
     const [command, setCommand] = useState("");
     const [running, setRunning] = useState(false);
@@ -32,7 +32,7 @@ export function TerminalPanel({ cwd, width, onClose }: { cwd: string; width: num
             unsubscribe();
             void desktop.stopTerminal();
         };
-    }, [cwd]);
+    }, [cwd, sandboxState]);
 
     useEffect(() => { outputRef.current?.scrollTo({ top: outputRef.current.scrollHeight }); }, [output, command]);
 

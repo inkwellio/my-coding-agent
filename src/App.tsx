@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { MainShellLayout } from "./components/MainShellLayout";
 import { ShortcutToast } from "./components/ShortcutToast";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
+import { useSandbox } from "./hooks/useSandbox";
 import { StatusBar } from "./components/StatusBar";
 import { TitleBar } from "./components/TitleBar";
 import { BranchCanvas } from "./pages/BranchCanvas";
@@ -42,10 +43,12 @@ function shellFor(route: Route): { pad: string; bar: "workspace" | "branch" | "e
 
 export default function App() {
     const rpc = useRpc();
+    const sandboxController = useSandbox();
     const initial = readShellFromLocation();
     const [route, setRoute] = useState<Route>(initial.route);
     const [engine, setEngine] = useState<EngineState>(initial.engine);
-    const [sandbox, setSandbox] = useState<SandboxState>(initial.sandbox);
+    const [sandboxSample, setSandbox] = useState<SandboxState>(initial.sandbox);
+    const sandbox = sandboxController.available ? sandboxController.status.state : sandboxSample;
     const [underlay, setUnderlay] = useState<Route>(initial.route === "branch" || initial.route === "onboarding" ? "workspace" : initial.route);
     const [branchDirty, setBranchDirty] = useState(initial.dirty);
     const [terminalOpen, setTerminalOpen] = useState(false);
@@ -79,11 +82,12 @@ export default function App() {
         const onKey = (event: KeyboardEvent) => {
             if (event.key !== "Escape") return;
             event.preventDefault();
-            setSandbox("off");
+            if (sandboxController.available) void sandboxController.setEnabled(false);
+            else setSandbox("off");
         };
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
-    }, [sandbox]);
+    }, [sandbox, sandboxController.available, sandboxController.setEnabled]);
 
     if (route === "onboarding") {
         return (
@@ -100,7 +104,7 @@ export default function App() {
     const shell = shellFor(route);
     const page = route === "branch" ? <BranchCanvas />
         : underlay === "diff" ? <DiffPage />
-        : underlay === "settings" ? <SettingsPage />
+        : underlay === "settings" ? <SettingsPage sandboxController={sandboxController} />
         : underlay === "status" ? <StatusSpecPage />
         : underlay === "engine" ? <EngineStatusPage />
         : <WorkspacePage />;
@@ -114,6 +118,7 @@ export default function App() {
                 contentPadClass={shell.pad}
                 showTerminal={terminalOpen && (route === "workspace" || route === "diff")}
                 terminalCwd={rpc.status.cwd}
+                terminalSandboxState={sandboxController.available ? `${sandbox}:${sandboxController.status.requested}` : undefined}
                 onCloseTerminal={() => setTerminalOpen(false)}
             >
                 {page}
@@ -123,9 +128,14 @@ export default function App() {
                     variant={shell.bar}
                     engine={engine}
                     sandbox={sandbox}
+                    sandboxStatus={sandboxController.available ? sandboxController.status : null}
+                    sandboxBusy={sandboxController.busy}
                     connection={rpc.status}
                     onEngineChange={setEngine}
-                    onSandboxChange={setSandbox}
+                    onSandboxChange={(next) => {
+                        if (sandboxController.available) void sandboxController.setEnabled(next !== "off");
+                        else setSandbox(next);
+                    }}
                 />
             )}
             <ShortcutToast />

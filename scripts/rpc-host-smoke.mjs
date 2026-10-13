@@ -73,7 +73,7 @@ function waitFor(predicate, label) {
                 resolve();
             } else if (Date.now() - started > 8000) {
                 clearInterval(timer);
-                reject(new Error(`timeout: ${label}; engine=${session.snapshot().engine}`));
+                reject(new Error(`timeout: ${label}; engine=${session.snapshot().engine}; detail=${session.snapshot().detail}`));
             }
         }, 20);
     });

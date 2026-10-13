@@ -1,24 +1,38 @@
 const { spawn } = require("node:child_process");
 const { StringDecoder } = require("node:string_decoder");
+const path = require("node:path");
 
-function createTerminalService(send) {
+function createTerminalService(send, { spawnProcess = spawn } = {}) {
     const terminals = new Map();
+    const generations = new Map();
 
-    function stop(id) {
+    async function stop(id) {
+        generations.set(id, (generations.get(id) || 0) + 1);
         const terminal = terminals.get(id);
         if (!terminal) return;
         terminals.delete(id);
-        terminal.kill();
+        const closed = new Promise((done) => terminal.once("close", done));
+        send(id, { type: "exit", code: null });
+        const timer = setTimeout(() => terminal.kill("SIGKILL"), 10_000);
+        if (terminal.connected) terminal.send({ type: "stop" }, () => {});
+        else terminal.kill();
+        try { await closed; } finally { clearTimeout(timer); }
     }
 
-    function start(id, cwd) {
-        stop(id);
+    async function start(id, cwd, sandboxOptions = null) {
+        const stopping = stop(id);
+        const generation = generations.get(id);
+        await stopping;
+        if (generations.get(id) !== generation) return { ok: false, message: "终端启动已取消" };
         const shell = process.platform === "win32" ? (process.env.ComSpec || "cmd.exe") : (process.env.SHELL || "/bin/sh");
         const windows = process.platform === "win32";
-        const child = spawn(shell, windows ? ["/D", "/Q", "/K", "chcp 65001>nul"] : [], {
+        const child = spawnProcess(sandboxOptions ? "node" : shell, sandboxOptions
+            ? [path.join(__dirname, "sandbox-terminal.mjs")]
+            : windows ? ["/D", "/Q", "/K", "chcp 65001>nul"] : [], {
             cwd,
-            env: { ...process.env, TERM: "dumb", NO_COLOR: "1", ...(windows ? { PROMPT: " " } : {}) },
-            stdio: ["pipe", "pipe", "pipe"],
+            env: { ...process.env, TERM: "dumb", NO_COLOR: "1", ...(windows ? { PROMPT: " " } : {}),
+                PI_DESKTOP_SANDBOX_CONFIG: sandboxOptions ? JSON.stringify(sandboxOptions) : "" },
+            stdio: sandboxOptions ? ["pipe", "pipe", "pipe", "ipc"] : ["pipe", "pipe", "pipe"],
             windowsHide: true,
         });
         terminals.set(id, child);
@@ -39,6 +53,31 @@ function createTerminalService(send) {
             terminals.delete(id);
             send(id, { type: "exit", code });
         });
+        if (sandboxOptions) {
+            try {
+                await new Promise((ready, reject) => {
+                    const timer = setTimeout(() => { cleanup(); reject(new Error("沙盒终端启动超时")); }, 20_000);
+                    const message = (event) => {
+                        if (event?.type === "ready") { cleanup(); ready(); }
+                        else if (event?.type === "error") { cleanup(); reject(new Error(event.message)); }
+                    };
+                    const failed = (error) => { cleanup(); reject(error instanceof Error ? error : new Error("沙盒终端启动失败")); };
+                    const cleanup = () => {
+                        clearTimeout(timer);
+                        child.off("message", message);
+                        child.off("error", failed);
+                        child.off("close", failed);
+                    };
+                    child.on("message", message);
+                    child.once("error", failed);
+                    child.once("close", failed);
+                });
+                if (terminals.get(id) !== child) return { ok: false, message: "终端启动已取消" };
+            } catch (error) {
+                if (terminals.get(id) === child) await stop(id);
+                return { ok: false, message: error.message };
+            }
+        }
         return { ok: true, cwd };
     }
 

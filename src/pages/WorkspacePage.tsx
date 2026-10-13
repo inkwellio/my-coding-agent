@@ -11,9 +11,10 @@ export function WorkspacePage() {
     const credentialGuide = live && hydrated && !rpc.status.credentials.configured
         ? "模型凭据未配置。API 密钥只留在主进程 AuthStorage（~/.pi/agent/auth.json）或环境变量里，不会进入这个窗口。"
         : null;
-    const guide = credentialGuide
-        || rpc.notice
-        || (live && hydrated && rpc.status.engine === "disconnected" ? rpc.status.detail : null);
+    const engineGuide = live && hydrated && (rpc.status.engine === "disconnected" || rpc.status.engine === "reconnecting")
+        ? rpc.status.detail
+        : null;
+    const guide = engineGuide || rpc.notice || credentialGuide;
 
     useEffect(() => {
         const node = scroller.current;
@@ -32,6 +33,7 @@ export function WorkspacePage() {
                     modelLabel={live ? rpc.status.modelLabel : null}
                     busy={rpc.sessionBusy || (live && rpc.status.engine === "reconnecting")}
                     guide={guide}
+                    guideHref={engineGuide ? null : "#/credentials"}
                     onSend={(text) => rpc.sendPrompt(text)}
                 />
             </section>

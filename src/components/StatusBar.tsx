@@ -3,11 +3,14 @@ import { readLocationQuery } from "../router";
 import type { RpcStatus } from "../rpc/types";
 import { engineChipLabel, nextSandboxState, readPolicyNoteOpen, type EngineState, type SandboxState } from "../status";
 import { Icon } from "./Icon";
+import type { SandboxSnapshot } from "../sandbox/types";
 
 interface StatusBarProps {
     variant: "workspace" | "branch" | "engine";
     engine: EngineState;
     sandbox: SandboxState;
+    sandboxStatus?: SandboxSnapshot | null;
+    sandboxBusy?: boolean;
     connection?: RpcStatus | null;
     onEngineChange: (engine: EngineState) => void;
     onSandboxChange: (sandbox: SandboxState) => void;
@@ -25,7 +28,7 @@ function LiveEngineChip({ connection }: { connection: RpcStatus }) {
         <span
             data-engine={connection.engine}
             data-web-contents={connection.webContentsId ?? ""}
-            title={`每窗口独立进程${connection.webContentsId != null ? ` · #${connection.webContentsId}` : ""}`}
+            title={connection.detail || `每窗口独立进程${connection.webContentsId != null ? ` · #${connection.webContentsId}` : ""}`}
             className="inline-flex items-center gap-1.5"
         >
             {connection.engine === "reconnecting" ? (
@@ -52,7 +55,7 @@ function sandboxLabel(sandbox: SandboxState) {
     return "沙盒 · 未启用";
 }
 
-export function StatusBar({ variant, engine, sandbox, connection, onEngineChange, onSandboxChange }: StatusBarProps) {
+export function StatusBar({ variant, engine, sandbox, sandboxStatus, sandboxBusy, connection, onEngineChange, onSandboxChange }: StatusBarProps) {
     const [policyOpen, setPolicyOpen] = useState(() => readPolicyNoteOpen(readLocationQuery()));
     const [hoveringSandbox, setHoveringSandbox] = useState(false);
 
@@ -85,7 +88,7 @@ export function StatusBar({ variant, engine, sandbox, connection, onEngineChange
                         )}
                     </span>
                     <span className="text-outline">|</span>
-                    <span>权限: 自动执行 (安全模式)</span>
+                    <a href="#/settings" title={sandboxStatus?.detail || "在设置中管理命令隔离"} className="hover:text-on-surface">{sandboxStatus ? sandboxLabel(sandbox) : "权限: 自动执行 (安全模式)"}</a>
                 </div>
                 <div className="flex items-center gap-space-md">
                     <span>已消耗 4.2k tokens</span>
@@ -156,7 +159,9 @@ export function StatusBar({ variant, engine, sandbox, connection, onEngineChange
                         <button
                             type="button"
                             data-sandbox={sandbox}
-                            onClick={() => onSandboxChange(nextSandboxState(sandbox))}
+                            disabled={sandboxBusy || sandboxStatus?.capability === "unsupported"}
+                            title={sandboxStatus?.detail || "修改命令隔离设置"}
+                            onClick={() => onSandboxChange(sandboxStatus ? (sandboxStatus.requested ? "off" : "enabling") : nextSandboxState(sandbox))}
                             className={`flex select-none items-center gap-2 rounded-full border px-3 py-1.5 shadow-sm transition-all ${
                                 sandboxOn
                                     ? "border-tertiary/40 bg-tertiary/10 text-tertiary"
@@ -187,7 +192,7 @@ export function StatusBar({ variant, engine, sandbox, connection, onEngineChange
                                     </span>
                                 </div>
                                 <p className="font-body-sm text-[12px] leading-relaxed text-on-surface">
-                                    主要防范工作区外的文件操作，并限制随意联网；仍可修改当前项目。当前仅隔离终端命令。帮助降低命令风险，非绝对安全。
+                                    隔离代理的 Shell 命令和内置终端，允许修改当前项目，限制工作区外写入，并阻止外网访问。文件编辑工具和 MCP 服务不在此隔离范围内。
                                 </p>
                                 <div className="mt-2 flex items-center justify-between border-t border-outline-variant/20 pt-2 font-label-xs text-outline">
                                     <span className="flex items-center gap-1">
@@ -247,7 +252,7 @@ export function StatusBar({ variant, engine, sandbox, connection, onEngineChange
                 <span className="text-outline">|</span>
                 {connection?.available ? <LiveEngineChip connection={connection} /> : <span>引擎: v2.4 (Ready)</span>}
                 <span className="text-outline">|</span>
-                <span>权限: 自动执行 (安全模式)</span>
+                <a href="#/settings" title={sandboxStatus?.detail || "在设置中管理命令隔离"} className="hover:text-on-surface">{sandboxStatus ? sandboxLabel(sandbox) : "权限: 自动执行 (安全模式)"}</a>
             </div>
             <div className="flex items-center gap-space-md">
                 <a href="#/status" className="hover:text-on-surface">

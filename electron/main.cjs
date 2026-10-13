@@ -17,6 +17,7 @@ if (process.env.ELECTRON_NO_SANDBOX === "1") {
 /** @type {Map<number, { start: () => Promise<void>, stop: () => Promise<void>, prompt: (message: string) => Promise<unknown>, snapshot: () => unknown, isStopping: () => boolean }>} */
 const sessions = new Map();
 const switchingWorkspaces = new Set();
+const workspaceTasks = new Map();
 const terminalService = createTerminalService((id, payload) => {
     const win = BrowserWindow.getAllWindows().find((entry) => entry.webContents.id === id);
     if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("terminal:event", payload);
@@ -24,6 +25,13 @@ const terminalService = createTerminalService((id, payload) => {
 
 const hostPromise = import("./rpc-host.mjs");
 const credentialsPromise = import("./credentials.mjs");
+const sandboxPromise = import("./sandbox-service.mjs").then(({ createSandboxService }) => createSandboxService({
+    publish(id, status) {
+        const win = BrowserWindow.getAllWindows().find((entry) => entry.webContents.id === id);
+        if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("sandbox:status", status);
+    },
+}));
+const sandboxTasks = new Map();
 let workspaceStorePromise;
 let mcpStore;
 
@@ -76,11 +84,12 @@ function windowFromEvent(event) {
     return BrowserWindow.fromWebContents(event.sender);
 }
 
-function createRpcSession(win, host, cwd, cwdWarning = null) {
+function createRpcSession(win, host, cwd, cwdWarning = null, sandboxOptions = null) {
     return host.createWindowSession({
         webContentsId: win.webContents.id,
         cwd,
         cwdWarning,
+        sandboxOptions,
         send(channel, payload) {
             try {
                 if (win.isDestroyed() || win.webContents.isDestroyed()) return;
@@ -92,10 +101,20 @@ function createRpcSession(win, host, cwd, cwdWarning = null) {
     });
 }
 
-async function switchWindowWorkspace(win, cwd) {
+function switchWindowWorkspace(win, cwd) {
+    const id = win?.webContents.id;
+    if (workspaceTasks.has(id)) return getWorkspaceStore().then((store) => ({ ok: false, state: store.snapshot(), message: "正在切换工作区" }));
+    const task = switchWindowWorkspaceNow(win, cwd);
+    workspaceTasks.set(id, task);
+    void task.finally(() => { if (workspaceTasks.get(id) === task) workspaceTasks.delete(id); });
+    return task;
+}
+
+async function switchWindowWorkspaceNow(win, cwd) {
     const store = await getWorkspaceStore();
-    if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return { ok: false, state: store.snapshot(), message: "窗口已关闭" };
+    if (!win || win.__piClosing || win.isDestroyed() || win.webContents.isDestroyed()) return { ok: false, state: store.snapshot(), message: "窗口已关闭" };
     const id = win.webContents.id;
+    if (sandboxTasks.has(id)) return { ok: false, state: store.snapshot(), message: "正在修改沙盒设置" };
     if (switchingWorkspaces.has(id)) return { ok: false, state: store.snapshot(), message: "正在切换工作区" };
     const known = store.snapshot().paths.find((entry) => entry === cwd);
     if (!known) return { ok: false, state: store.snapshot(), message: "请先添加这个工作区" };
@@ -114,18 +133,24 @@ async function switchWindowWorkspace(win, cwd) {
     switchingWorkspaces.add(id);
     try {
         const host = await hostPromise;
-        const next = createRpcSession(win, host, known);
+        const sandbox = await sandboxPromise;
+        const keepSandbox = sandbox.snapshot(id, previous?.snapshot().cwd).requested;
         const state = store.activate(known);
-        terminalService.stop(id);
+        await terminalService.stop(id);
         if (previous) {
             await previous.stop();
             if (sessions.get(id) === previous) sessions.delete(id);
         }
-        if (win.isDestroyed() || win.webContents.isDestroyed()) return { ok: false, state: store.snapshot(), message: "窗口已关闭" };
+        if (win.__piClosing || win.isDestroyed() || win.webContents.isDestroyed()) return { ok: false, state: store.snapshot(), message: "窗口已关闭" };
+        await sandbox.release(id);
+        const options = keepSandbox ? await sandbox.prepare(id, known) : null;
+        if (win.__piClosing || win.isDestroyed()) return { ok: false, state: store.snapshot(), message: "窗口已关闭" };
+        const next = createRpcSession(win, host, known, null, options);
         sessions.set(id, next);
         win.webContents.send("rpc:status", next.snapshot());
         broadcast("workspaces:changed", state);
         await next.start();
+        if (keepSandbox) sandbox.complete(id, next.snapshot().engine !== "disconnected", next.snapshot().engine === "disconnected" ? next.snapshot().detail : null);
         return { ok: true, state };
     } catch (error) {
         return { ok: false, state: store.snapshot(), message: error instanceof Error ? error.message : "切换工作区失败" };
@@ -163,17 +188,26 @@ function createWindow() {
         if (win.isDestroyed()) return;
         const current = sessions.get(webContentsId);
         if (current) win.webContents.send("rpc:status", current.snapshot());
+        void sandboxPromise.then((sandbox) => {
+            if (!win.isDestroyed()) win.webContents.send("sandbox:status", sandbox.snapshot(webContentsId, current?.snapshot().cwd));
+        });
         void getWorkspaceStore().then((store) => {
             if (!win.isDestroyed()) win.webContents.send("workspaces:changed", store.snapshot());
         });
     });
 
+    let closing = false;
     win.on("close", (event) => {
-        terminalService.stop(webContentsId);
-        const session = sessions.get(webContentsId);
-        if (!session || session.isStopping()) return;
+        if (closing) { event.preventDefault(); return; }
         event.preventDefault();
-        session.stop().finally(() => {
+        closing = true;
+        win.__piClosing = true;
+        Promise.allSettled([sandboxTasks.get(webContentsId), workspaceTasks.get(webContentsId)]).then(async () => {
+            await terminalService.stop(webContentsId);
+            await sessions.get(webContentsId)?.stop();
+            const sandbox = await sandboxPromise;
+            await sandbox.release(webContentsId);
+        }).finally(() => {
             sessions.delete(webContentsId);
             if (!win.isDestroyed()) win.destroy();
         });
@@ -201,7 +235,7 @@ function createWindow() {
 
     Promise.all([hostPromise, getWorkspaceStore()])
         .then(([host, store]) => {
-            if (win.isDestroyed()) return null;
+            if (win.__piClosing || win.isDestroyed()) return null;
             const project = host.resolveProjectCwd();
             const cwd = store.snapshot().activeCwd;
             const session = createRpcSession(win, host, cwd, cwd === project.cwd ? project.warning : null);
@@ -225,13 +259,24 @@ ipcMain.on("window:toggle-maximize", (event) => {
 });
 ipcMain.on("window:close", (event) => windowFromEvent(event)?.close());
 
-ipcMain.handle("terminal:start", (event) => {
+ipcMain.handle("terminal:start", async (event) => {
+    if (windowFromEvent(event)?.__piClosing || sandboxTasks.has(event.sender.id) || workspaceTasks.has(event.sender.id)) return { ok: false, message: "正在更新或关闭工作区" };
     const cwd = sessions.get(event.sender.id)?.snapshot().cwd;
-    return cwd ? terminalService.start(event.sender.id, cwd) : { ok: false, message: "工作区尚未就绪" };
+    if (!cwd) return { ok: false, message: "工作区尚未就绪" };
+    const sandbox = await sandboxPromise;
+    const status = sandbox.snapshot(event.sender.id, cwd);
+    if (status.requested && status.state !== "on") return { ok: false, message: status.detail || "沙盒尚未就绪，终端已阻止启动" };
+    return terminalService.start(event.sender.id, cwd, status.requested ? sandbox.options(event.sender.id) : null);
 });
-ipcMain.handle("terminal:write", (event, command) => terminalService.write(event.sender.id, command));
-ipcMain.handle("terminal:stop", (event) => {
-    terminalService.stop(event.sender.id);
+ipcMain.handle("terminal:write", async (event, command) => {
+    const sandbox = await sandboxPromise;
+    const policy = sandbox.snapshot(event.sender.id, sessions.get(event.sender.id)?.snapshot().cwd);
+    if (windowFromEvent(event)?.__piClosing || sandboxTasks.has(event.sender.id) || workspaceTasks.has(event.sender.id)) return { ok: false, message: "正在更新或关闭工作区" };
+    if (policy.requested && policy.state !== "on") return { ok: false, message: policy.detail || "沙盒尚未就绪，命令已阻止" };
+    return terminalService.write(event.sender.id, command);
+});
+ipcMain.handle("terminal:stop", async (event) => {
+    await terminalService.stop(event.sender.id);
     return { ok: true };
 });
 
@@ -244,9 +289,81 @@ ipcMain.handle("rpc:get-status", async (event) => {
 });
 
 ipcMain.handle("rpc:prompt", async (event, message) => {
+    if (windowFromEvent(event)?.__piClosing || sandboxTasks.has(event.sender.id) || workspaceTasks.has(event.sender.id)) return { ok: false, code: "error", message: "正在更新或关闭工作区" };
     const session = sessions.get(event.sender.id);
     if (!session) return { ok: false, code: "disconnected", message: "这个窗口没有 RPC 会话" };
+    const sandbox = await sandboxPromise;
+    const policy = sandbox.snapshot(event.sender.id, session.snapshot().cwd);
+    if (policy.requested && policy.state !== "on") return { ok: false, code: "error", message: policy.detail || "沙盒尚未就绪，已阻止发送" };
     return session.prompt(message);
+});
+
+ipcMain.handle("sandbox:get-status", async (event) => {
+    const sandbox = await sandboxPromise;
+    const cwd = sessions.get(event.sender.id)?.snapshot().cwd;
+    await sandbox.probe();
+    return sandbox.snapshot(event.sender.id, cwd);
+});
+
+ipcMain.handle("sandbox:set-enabled", (event, enabled) => {
+    const id = event.sender.id;
+    const task = Promise.resolve(sandboxTasks.get(id)).catch(() => {}).then(async () => {
+        const sandbox = await sandboxPromise;
+        const session = sessions.get(id);
+        const cwd = session?.snapshot().cwd;
+        try {
+            if (typeof enabled !== "boolean") throw new Error("无效的沙盒设置");
+            if (!session || !windowFromEvent(event) || windowFromEvent(event).__piClosing || event.sender.isDestroyed()) throw new Error("工作区尚未就绪");
+            if (workspaceTasks.has(id)) throw new Error("正在切换工作区");
+            if (session.snapshot().engine === "chatting") throw new Error("请等待当前回答结束后再修改沙盒设置");
+            const before = sandbox.snapshot(id, cwd);
+            if (enabled && before.state === "on") return { ok: true, status: before };
+            if (!enabled && !before.requested) return { ok: true, status: before };
+            const options = enabled ? await sandbox.prepare(id, cwd) : null;
+            await terminalService.stop(id);
+            const result = await session.setSandbox(options);
+            if (result.unchanged) {
+                if (!before.requested) await sandbox.release(id);
+                else sandbox.complete(id, before.state === "on", before.detail);
+                return { ...result, status: sandbox.snapshot(id, cwd) };
+            }
+            if (!enabled) await sandbox.release(id);
+            sandbox.complete(id, enabled && result.ok, result.ok ? null : result.message);
+            return { ...result, status: sandbox.snapshot(id, cwd) };
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "修改沙盒设置失败";
+            const before = sandbox.snapshot(id, cwd);
+            sandbox.complete(id, before.state === "on", message);
+            return { ok: false, message, status: sandbox.snapshot(id, cwd) };
+        }
+    });
+    sandboxTasks.set(id, task);
+    void task.finally(() => { if (sandboxTasks.get(id) === task) sandboxTasks.delete(id); });
+    return task;
+});
+
+let sandboxInstallTask;
+ipcMain.handle("sandbox:install", async (event) => {
+    const sandbox = await sandboxPromise;
+    const cwd = sessions.get(event.sender.id)?.snapshot().cwd;
+    if (process.platform !== "win32") return { ok: false, status: sandbox.snapshot(event.sender.id, cwd), message: "当前系统不需要此安装步骤" };
+    if (sandboxInstallTask) return { ok: false, status: sandbox.snapshot(event.sender.id, cwd), message: "另一个窗口正在安装沙盒组件" };
+    const win = windowFromEvent(event);
+    if (!win) return { ok: false, status: sandbox.snapshot(event.sender.id, cwd), message: "窗口已关闭" };
+    sandboxInstallTask = true;
+    try {
+        const response = await dialog.showMessageBox(win, {
+            type: "question", title: "安装沙盒组件", message: "安装命令隔离所需的系统组件？",
+            detail: "系统会请求管理员权限。安装会创建专用沙盒账户和网络过滤规则；你可以取消。",
+            buttons: ["取消", "安装"], defaultId: 0, cancelId: 0,
+        });
+        if (response.response !== 1) return { ok: false, cancelled: true, status: sandbox.snapshot(event.sender.id, cwd) };
+        sandboxInstallTask = sandbox.installWindows();
+        const result = await sandboxInstallTask;
+        return { ...result, status: sandbox.snapshot(event.sender.id, cwd) };
+    } catch (error) {
+        return { ok: false, status: sandbox.snapshot(event.sender.id, cwd), message: error instanceof Error ? error.message : "安装沙盒组件失败" };
+    } finally { sandboxInstallTask = null; }
 });
 
 ipcMain.handle("rpc:abort", async (event) => {
@@ -492,7 +609,14 @@ app.on("before-quit", (event) => {
     if (pending.length === 0) return;
     event.preventDefault();
     quitting = true;
-    Promise.all(pending.map((session) => session.stop())).finally(() => {
+    Promise.all(pending.map(async (session) => {
+        const id = session.snapshot().webContentsId;
+        await Promise.allSettled([sandboxTasks.get(id), workspaceTasks.get(id)]);
+        await terminalService.stop(id);
+        await sessions.get(id)?.stop();
+        const sandbox = await sandboxPromise;
+        await sandbox.release(id);
+    })).finally(() => {
         sessions.clear();
         app.quit();
     });

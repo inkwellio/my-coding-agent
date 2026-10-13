@@ -129,7 +129,11 @@ export function RpcProvider({ children }: { children: ReactNode }) {
             setStatus(withBridge(snapshot));
             setHydrated(true);
         };
-        const offStatus = desktop.onEngineStatus(apply);
+        let receivedStatus = false;
+        const offStatus = desktop.onEngineStatus((snapshot) => {
+            receivedStatus = true;
+            apply(snapshot);
+        });
         const offEvent = desktop.onRpcEvent((event) => {
             if (loading.current) bufferedEvents.current.push(event);
             else setBlocks((current) => applyRpcEvent(current, event));
@@ -141,7 +145,9 @@ export function RpcProvider({ children }: { children: ReactNode }) {
         });
         let cancelled = false;
         desktop.getEngineStatus().then((snapshot) => {
-            if (!cancelled) apply(snapshot);
+            if (!cancelled && !receivedStatus) apply(snapshot);
+        }).catch((error) => {
+            if (!cancelled && !receivedStatus) setStatus((current) => ({ ...current, engine: "disconnected", detail: error instanceof Error ? error.message : "读取引擎状态失败" }));
         });
         return () => {
             cancelled = true;
