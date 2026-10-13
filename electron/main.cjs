@@ -10,16 +10,16 @@ const { createMcpStore } = require("./mcp-service.cjs");
 const isDev = process.env.ELECTRON_DEV === "1";
 
 if (process.env.ELECTRON_NO_SANDBOX === "1") {
-  app.commandLine.appendSwitch("no-sandbox");
-  app.commandLine.appendSwitch("disable-dev-shm-usage");
+    app.commandLine.appendSwitch("no-sandbox");
+    app.commandLine.appendSwitch("disable-dev-shm-usage");
 }
 
 /** @type {Map<number, { start: () => Promise<void>, stop: () => Promise<void>, prompt: (message: string) => Promise<unknown>, snapshot: () => unknown, isStopping: () => boolean }>} */
 const sessions = new Map();
 const switchingWorkspaces = new Set();
 const terminalService = createTerminalService((id, payload) => {
-  const win = BrowserWindow.getAllWindows().find((entry) => entry.webContents.id === id);
-  if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("terminal:event", payload);
+    const win = BrowserWindow.getAllWindows().find((entry) => entry.webContents.id === id);
+    if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("terminal:event", payload);
 });
 
 const hostPromise = import("./rpc-host.mjs");
@@ -28,483 +28,483 @@ let workspaceStorePromise;
 let mcpStore;
 
 function getMcpStore() {
-  mcpStore ??= createMcpStore(
-    path.join(process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), ".pi", "agent"), "mcp.json"),
-    path.join(app.getPath("userData"), "mcp-servers.json"),
-  );
-  return mcpStore;
+    mcpStore ??= createMcpStore(
+        path.join(process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), ".pi", "agent"), "mcp.json"),
+        path.join(app.getPath("userData"), "mcp-servers.json"),
+    );
+    return mcpStore;
 }
 
 async function reloadMcpSessions() {
-  const results = await Promise.all([...sessions.values()].map((session) => session.reloadMcp().catch(() => ({ ok: false }))));
-  return results.every((result) => result.ok);
+    const results = await Promise.all([...sessions.values()].map((session) => session.reloadMcp().catch(() => ({ ok: false }))));
+    return results.every((result) => result.ok);
 }
 
 function getWorkspaceStore() {
-  workspaceStorePromise ??= (async () => {
-    await app.whenReady();
-    const host = await hostPromise;
-    const filePath = path.join(app.getPath("userData"), "workspaces.json");
-    return createWorkspaceStore(filePath, host.resolveProjectCwd().cwd);
-  })();
-  return workspaceStorePromise;
+    workspaceStorePromise ??= (async () => {
+        await app.whenReady();
+        const host = await hostPromise;
+        const filePath = path.join(app.getPath("userData"), "workspaces.json");
+        return createWorkspaceStore(filePath, host.resolveProjectCwd().cwd);
+    })();
+    return workspaceStorePromise;
 }
 
 function broadcast(channel, payload) {
-  for (const win of BrowserWindow.getAllWindows()) {
-    if (win.isDestroyed() || win.webContents.isDestroyed()) continue;
-    try {
-      win.webContents.send(channel, payload);
-    } catch {
-      // The frame can close between the destroyed check and send.
+    for (const win of BrowserWindow.getAllWindows()) {
+        if (win.isDestroyed() || win.webContents.isDestroyed()) continue;
+        try {
+            win.webContents.send(channel, payload);
+        } catch {
+            // The frame can close between the destroyed check and send.
+        }
     }
-  }
 }
 
 async function publishCredentials() {
-  const credentials = await credentialsPromise;
-  const providers = await credentials.getStatus();
-  const summary = credentials.summaryFrom(providers);
-  for (const session of sessions.values()) {
-    session.setCredentials?.(summary);
-  }
-  broadcast("credentials:status", { summary, providers });
-  return { summary, providers };
+    const credentials = await credentialsPromise;
+    const providers = await credentials.getStatus();
+    const summary = credentials.summaryFrom(providers);
+    for (const session of sessions.values()) {
+        session.setCredentials?.(summary);
+    }
+    broadcast("credentials:status", { summary, providers });
+    return { summary, providers };
 }
 
 function windowFromEvent(event) {
-  return BrowserWindow.fromWebContents(event.sender);
+    return BrowserWindow.fromWebContents(event.sender);
 }
 
 function createRpcSession(win, host, cwd, cwdWarning = null) {
-  return host.createWindowSession({
-    webContentsId: win.webContents.id,
-    cwd,
-    cwdWarning,
-    send(channel, payload) {
-      try {
-        if (win.isDestroyed() || win.webContents.isDestroyed()) return;
-        win.webContents.send(channel, payload);
-      } catch {
-        // The frame can close between the destroyed check and send.
-      }
-    },
-  });
+    return host.createWindowSession({
+        webContentsId: win.webContents.id,
+        cwd,
+        cwdWarning,
+        send(channel, payload) {
+            try {
+                if (win.isDestroyed() || win.webContents.isDestroyed()) return;
+                win.webContents.send(channel, payload);
+            } catch {
+                // The frame can close between the destroyed check and send.
+            }
+        },
+    });
 }
 
 async function switchWindowWorkspace(win, cwd) {
-  const store = await getWorkspaceStore();
-  if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return { ok: false, state: store.snapshot(), message: "窗口已关闭" };
-  const id = win.webContents.id;
-  if (switchingWorkspaces.has(id)) return { ok: false, state: store.snapshot(), message: "正在切换工作区" };
-  const known = store.snapshot().paths.find((entry) => entry === cwd);
-  if (!known) return { ok: false, state: store.snapshot(), message: "请先添加这个工作区" };
-  const previous = sessions.get(id);
-  if (previous?.snapshot().engine === "chatting") {
-    return { ok: false, state: store.snapshot(), message: "请等待当前回答结束后再切换工作区" };
-  }
-  if (previous?.snapshot().cwd === known) {
-    try {
-      return { ok: true, state: store.activate(known) };
-    } catch (error) {
-      return { ok: false, state: store.snapshot(), message: error instanceof Error ? error.message : "保存工作区失败" };
+    const store = await getWorkspaceStore();
+    if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return { ok: false, state: store.snapshot(), message: "窗口已关闭" };
+    const id = win.webContents.id;
+    if (switchingWorkspaces.has(id)) return { ok: false, state: store.snapshot(), message: "正在切换工作区" };
+    const known = store.snapshot().paths.find((entry) => entry === cwd);
+    if (!known) return { ok: false, state: store.snapshot(), message: "请先添加这个工作区" };
+    const previous = sessions.get(id);
+    if (previous?.snapshot().engine === "chatting") {
+        return { ok: false, state: store.snapshot(), message: "请等待当前回答结束后再切换工作区" };
     }
-  }
+    if (previous?.snapshot().cwd === known) {
+        try {
+            return { ok: true, state: store.activate(known) };
+        } catch (error) {
+            return { ok: false, state: store.snapshot(), message: error instanceof Error ? error.message : "保存工作区失败" };
+        }
+    }
 
-  switchingWorkspaces.add(id);
-  try {
-    const host = await hostPromise;
-    const next = createRpcSession(win, host, known);
-    const state = store.activate(known);
-    terminalService.stop(id);
-    if (previous) {
-      await previous.stop();
-      if (sessions.get(id) === previous) sessions.delete(id);
+    switchingWorkspaces.add(id);
+    try {
+        const host = await hostPromise;
+        const next = createRpcSession(win, host, known);
+        const state = store.activate(known);
+        terminalService.stop(id);
+        if (previous) {
+            await previous.stop();
+            if (sessions.get(id) === previous) sessions.delete(id);
+        }
+        if (win.isDestroyed() || win.webContents.isDestroyed()) return { ok: false, state: store.snapshot(), message: "窗口已关闭" };
+        sessions.set(id, next);
+        win.webContents.send("rpc:status", next.snapshot());
+        broadcast("workspaces:changed", state);
+        await next.start();
+        return { ok: true, state };
+    } catch (error) {
+        return { ok: false, state: store.snapshot(), message: error instanceof Error ? error.message : "切换工作区失败" };
+    } finally {
+        switchingWorkspaces.delete(id);
     }
-    if (win.isDestroyed() || win.webContents.isDestroyed()) return { ok: false, state: store.snapshot(), message: "窗口已关闭" };
-    sessions.set(id, next);
-    win.webContents.send("rpc:status", next.snapshot());
-    broadcast("workspaces:changed", state);
-    await next.start();
-    return { ok: true, state };
-  } catch (error) {
-    return { ok: false, state: store.snapshot(), message: error instanceof Error ? error.message : "切换工作区失败" };
-  } finally {
-    switchingWorkspaces.delete(id);
-  }
 }
 
 function createWindow() {
-  const win = new BrowserWindow({
-    width: 1440,
-    height: 900,
-    minWidth: 1180,
-    minHeight: 720,
-    backgroundColor: "#0b0e13",
-    title: "智能编程工作台",
-    frame: false,
-    autoHideMenuBar: true,
-    webPreferences: {
-      preload: path.join(__dirname, "preload.cjs"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      // Chromium’s sandbox cannot start in some Linux containers. The same
-      // ELECTRON_NO_SANDBOX=1 switch documented for the browser process also
-      // has to turn off the renderer sandbox or the preload bridge never loads.
-      sandbox: process.env.ELECTRON_NO_SANDBOX !== "1",
-    },
-  });
-
-  Menu.setApplicationMenu(null);
-
-  const webContentsId = win.webContents.id;
-
-  win.webContents.on("did-finish-load", () => {
-    if (win.isDestroyed()) return;
-    const current = sessions.get(webContentsId);
-    if (current) win.webContents.send("rpc:status", current.snapshot());
-    void getWorkspaceStore().then((store) => {
-      if (!win.isDestroyed()) win.webContents.send("workspaces:changed", store.snapshot());
+    const win = new BrowserWindow({
+        width: 1440,
+        height: 900,
+        minWidth: 1180,
+        minHeight: 720,
+        backgroundColor: "#0b0e13",
+        title: "智能编程工作台",
+        frame: false,
+        autoHideMenuBar: true,
+        webPreferences: {
+            preload: path.join(__dirname, "preload.cjs"),
+            contextIsolation: true,
+            nodeIntegration: false,
+            // Chromium’s sandbox cannot start in some Linux containers. The same
+            // ELECTRON_NO_SANDBOX=1 switch documented for the browser process also
+            // has to turn off the renderer sandbox or the preload bridge never loads.
+            sandbox: process.env.ELECTRON_NO_SANDBOX !== "1",
+        },
     });
-  });
 
-  win.on("close", (event) => {
-    terminalService.stop(webContentsId);
-    const session = sessions.get(webContentsId);
-    if (!session || session.isStopping()) return;
-    event.preventDefault();
-    session.stop().finally(() => {
-      sessions.delete(webContentsId);
-      if (!win.isDestroyed()) win.destroy();
+    Menu.setApplicationMenu(null);
+
+    const webContentsId = win.webContents.id;
+
+    win.webContents.on("did-finish-load", () => {
+        if (win.isDestroyed()) return;
+        const current = sessions.get(webContentsId);
+        if (current) win.webContents.send("rpc:status", current.snapshot());
+        void getWorkspaceStore().then((store) => {
+            if (!win.isDestroyed()) win.webContents.send("workspaces:changed", store.snapshot());
+        });
     });
-  });
 
-  const load = () => {
-    if (win.isDestroyed() || win.__piLoaded) return;
-    win.__piLoaded = true;
-    if (isDev) {
-      win.loadURL("http://127.0.0.1:5173");
-      return;
-    }
-    const indexPath = path.join(__dirname, "../dist/index.html");
-    if (!fs.existsSync(indexPath)) {
-      win.loadURL(
-        "data:text/html;charset=utf-8," +
-          encodeURIComponent(
-            "<body style='background:#101418;color:#e1e2e9;font-family:sans-serif;padding:24px'>Renderer build not found. Run <code>npm start</code> or <code>npm run dev</code>.</body>",
-          ),
-      );
-      return;
-    }
-    win.loadFile(indexPath);
-  };
-
-  Promise.all([hostPromise, getWorkspaceStore()])
-    .then(([host, store]) => {
-      if (win.isDestroyed()) return null;
-      const project = host.resolveProjectCwd();
-      const cwd = store.snapshot().activeCwd;
-      const session = createRpcSession(win, host, cwd, cwd === project.cwd ? project.warning : null);
-      sessions.set(webContentsId, session);
-      const starting = session.start();
-      load();
-      return starting;
-    })
-    .catch((error) => {
-      console.error("[pi-rpc] failed to start session", error instanceof Error ? error.message : error);
-      load();
+    win.on("close", (event) => {
+        terminalService.stop(webContentsId);
+        const session = sessions.get(webContentsId);
+        if (!session || session.isStopping()) return;
+        event.preventDefault();
+        session.stop().finally(() => {
+            sessions.delete(webContentsId);
+            if (!win.isDestroyed()) win.destroy();
+        });
     });
+
+    const load = () => {
+        if (win.isDestroyed() || win.__piLoaded) return;
+        win.__piLoaded = true;
+        if (isDev) {
+            win.loadURL("http://127.0.0.1:5173");
+            return;
+        }
+        const indexPath = path.join(__dirname, "../dist/index.html");
+        if (!fs.existsSync(indexPath)) {
+            win.loadURL(
+                "data:text/html;charset=utf-8," +
+                    encodeURIComponent(
+                        "<body style='background:#101418;color:#e1e2e9;font-family:sans-serif;padding:24px'>Renderer build not found. Run <code>npm start</code> or <code>npm run dev</code>.</body>",
+                    ),
+            );
+            return;
+        }
+        win.loadFile(indexPath);
+    };
+
+    Promise.all([hostPromise, getWorkspaceStore()])
+        .then(([host, store]) => {
+            if (win.isDestroyed()) return null;
+            const project = host.resolveProjectCwd();
+            const cwd = store.snapshot().activeCwd;
+            const session = createRpcSession(win, host, cwd, cwd === project.cwd ? project.warning : null);
+            sessions.set(webContentsId, session);
+            const starting = session.start();
+            load();
+            return starting;
+        })
+        .catch((error) => {
+            console.error("[pi-rpc] failed to start session", error instanceof Error ? error.message : error);
+            load();
+        });
 }
 
 ipcMain.on("window:minimize", (event) => windowFromEvent(event)?.minimize());
 ipcMain.on("window:toggle-maximize", (event) => {
-  const win = windowFromEvent(event);
-  if (!win) return;
-  if (win.isMaximized()) win.unmaximize();
-  else win.maximize();
+    const win = windowFromEvent(event);
+    if (!win) return;
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
 });
 ipcMain.on("window:close", (event) => windowFromEvent(event)?.close());
 
 ipcMain.handle("terminal:start", (event) => {
-  const cwd = sessions.get(event.sender.id)?.snapshot().cwd;
-  return cwd ? terminalService.start(event.sender.id, cwd) : { ok: false, message: "工作区尚未就绪" };
+    const cwd = sessions.get(event.sender.id)?.snapshot().cwd;
+    return cwd ? terminalService.start(event.sender.id, cwd) : { ok: false, message: "工作区尚未就绪" };
 });
 ipcMain.handle("terminal:write", (event, command) => terminalService.write(event.sender.id, command));
 ipcMain.handle("terminal:stop", (event) => {
-  terminalService.stop(event.sender.id);
-  return { ok: true };
+    terminalService.stop(event.sender.id);
+    return { ok: true };
 });
 
 ipcMain.handle("rpc:get-status", async (event) => {
-  const session = sessions.get(event.sender.id);
-  if (session) return session.snapshot();
-  const host = await hostPromise;
-  const project = host.resolveProjectCwd();
-  return host.disconnectedSnapshot(event.sender.id, project.cwd);
+    const session = sessions.get(event.sender.id);
+    if (session) return session.snapshot();
+    const host = await hostPromise;
+    const project = host.resolveProjectCwd();
+    return host.disconnectedSnapshot(event.sender.id, project.cwd);
 });
 
 ipcMain.handle("rpc:prompt", async (event, message) => {
-  const session = sessions.get(event.sender.id);
-  if (!session) return { ok: false, code: "disconnected", message: "这个窗口没有 RPC 会话" };
-  return session.prompt(message);
+    const session = sessions.get(event.sender.id);
+    if (!session) return { ok: false, code: "disconnected", message: "这个窗口没有 RPC 会话" };
+    return session.prompt(message);
 });
 
 ipcMain.handle("rpc:abort", async (event) => {
-  const session = sessions.get(event.sender.id);
-  return session ? session.abort() : { ok: false, message: "这个窗口没有 RPC 会话" };
+    const session = sessions.get(event.sender.id);
+    return session ? session.abort() : { ok: false, message: "这个窗口没有 RPC 会话" };
 });
 
 ipcMain.handle("rpc:list-sessions", async (event) => {
-  const session = sessions.get(event.sender.id);
-  return session ? session.listSessions() : [];
+    const session = sessions.get(event.sender.id);
+    return session ? session.listSessions() : [];
 });
 
 ipcMain.handle("rpc:get-session-view", async (event) => {
-  const session = sessions.get(event.sender.id);
-  return session ? session.getSessionView() : { ok: false, message: "这个窗口没有 RPC 会话" };
+    const session = sessions.get(event.sender.id);
+    return session ? session.getSessionView() : { ok: false, message: "这个窗口没有 RPC 会话" };
 });
 
 ipcMain.handle("rpc:change-session", async (event, sessionId) => {
-  const session = sessions.get(event.sender.id);
-  return session ? session.changeSession(sessionId) : { ok: false, message: "这个窗口没有 RPC 会话" };
+    const session = sessions.get(event.sender.id);
+    return session ? session.changeSession(sessionId) : { ok: false, message: "这个窗口没有 RPC 会话" };
 });
 
 ipcMain.handle("mcp:list", () => getMcpStore().list());
 
 ipcMain.handle("mcp:save", async (_event, value) => {
-  try {
-    getMcpStore().save(value);
-    const servers = getMcpStore().list();
-    broadcast("mcp:changed", servers);
-    return { ok: true, servers, applied: await reloadMcpSessions() };
-  } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "保存 MCP 服务失败" };
-  }
+    try {
+        getMcpStore().save(value);
+        const servers = getMcpStore().list();
+        broadcast("mcp:changed", servers);
+        return { ok: true, servers, applied: await reloadMcpSessions() };
+    } catch (error) {
+        return { ok: false, message: error instanceof Error ? error.message : "保存 MCP 服务失败" };
+    }
 });
 
 ipcMain.handle("mcp:remove", async (_event, id) => {
-  try {
-    const servers = getMcpStore().remove(id);
-    broadcast("mcp:changed", servers);
-    return { ok: true, servers, applied: await reloadMcpSessions() };
-  } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "删除 MCP 服务失败" };
-  }
+    try {
+        const servers = getMcpStore().remove(id);
+        broadcast("mcp:changed", servers);
+        return { ok: true, servers, applied: await reloadMcpSessions() };
+    } catch (error) {
+        return { ok: false, message: error instanceof Error ? error.message : "删除 MCP 服务失败" };
+    }
 });
 
 ipcMain.handle("mcp:set-enabled", async (_event, id, enabled) => {
-  try {
-    const servers = getMcpStore().setEnabled(id, enabled);
-    broadcast("mcp:changed", servers);
-    return { ok: true, servers, applied: await reloadMcpSessions() };
-  } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "更新 MCP 服务失败" };
-  }
+    try {
+        const servers = getMcpStore().setEnabled(id, enabled);
+        broadcast("mcp:changed", servers);
+        return { ok: true, servers, applied: await reloadMcpSessions() };
+    } catch (error) {
+        return { ok: false, message: error instanceof Error ? error.message : "更新 MCP 服务失败" };
+    }
 });
 
 ipcMain.handle("mcp:reload", async () => {
-  const applied = await reloadMcpSessions();
-  return { ok: applied, applied, message: applied ? undefined : "请等待当前回答结束后再重载 MCP 工具" };
+    const applied = await reloadMcpSessions();
+    return { ok: applied, applied, message: applied ? undefined : "请等待当前回答结束后再重载 MCP 工具" };
 });
 
 ipcMain.handle("mcp:test", async (event, id) => {
-  const server = getMcpStore().list().find((item) => item.id === id);
-  if (!server) return { ok: false, message: "MCP 服务不存在" };
-  if (!server.enabled) return { ok: false, message: "请先启用该服务" };
-  const { testMcpServer } = await import("./mcp-diagnostics.mjs");
-  const cwd = sessions.get(event.sender.id)?.snapshot().cwd || process.cwd();
-  return testMcpServer(server.name, cwd);
+    const server = getMcpStore().list().find((item) => item.id === id);
+    if (!server) return { ok: false, message: "MCP 服务不存在" };
+    if (!server.enabled) return { ok: false, message: "请先启用该服务" };
+    const { testMcpServer } = await import("./mcp-diagnostics.mjs");
+    const cwd = sessions.get(event.sender.id)?.snapshot().cwd || process.cwd();
+    return testMcpServer(server.name, cwd);
 });
 
 ipcMain.handle("workspaces:list", async () => (await getWorkspaceStore()).snapshot());
 
 ipcMain.handle("workspaces:add", async (event) => {
-  const win = windowFromEvent(event);
-  const store = await getWorkspaceStore();
-  if (!win) return { ok: false, state: store.snapshot(), message: "窗口已关闭" };
-  const selection = await dialog.showOpenDialog(win, {
-    title: "添加工作区",
-    properties: ["openDirectory", "createDirectory"],
-  });
-  if (selection.canceled || !selection.filePaths[0]) return { ok: false, cancelled: true, state: store.snapshot() };
-  try {
-    const cwd = store.add(selection.filePaths[0]);
-    broadcast("workspaces:changed", store.snapshot());
-    return await switchWindowWorkspace(win, cwd);
-  } catch (error) {
-    return { ok: false, state: store.snapshot(), message: error instanceof Error ? error.message : "添加工作区失败" };
-  }
+    const win = windowFromEvent(event);
+    const store = await getWorkspaceStore();
+    if (!win) return { ok: false, state: store.snapshot(), message: "窗口已关闭" };
+    const selection = await dialog.showOpenDialog(win, {
+        title: "添加工作区",
+        properties: ["openDirectory", "createDirectory"],
+    });
+    if (selection.canceled || !selection.filePaths[0]) return { ok: false, cancelled: true, state: store.snapshot() };
+    try {
+        const cwd = store.add(selection.filePaths[0]);
+        broadcast("workspaces:changed", store.snapshot());
+        return await switchWindowWorkspace(win, cwd);
+    } catch (error) {
+        return { ok: false, state: store.snapshot(), message: error instanceof Error ? error.message : "添加工作区失败" };
+    }
 });
 
 ipcMain.handle("workspaces:switch", async (event, cwd) => switchWindowWorkspace(windowFromEvent(event), cwd));
 
 function gitCwd(event) {
-  return sessions.get(event.sender.id)?.snapshot().cwd || null;
+    return sessions.get(event.sender.id)?.snapshot().cwd || null;
 }
 
 ipcMain.handle("git:status", (event) => {
-  const cwd = gitCwd(event);
-  return cwd ? gitService.status(cwd) : { ok: false, message: "这个窗口没有工作区", files: [], branch: "" };
+    const cwd = gitCwd(event);
+    return cwd ? gitService.status(cwd) : { ok: false, message: "这个窗口没有工作区", files: [], branch: "" };
 });
 ipcMain.handle("git:diff", (event, filePath) => {
-  const cwd = gitCwd(event);
-  return cwd ? gitService.diff(cwd, filePath) : { ok: false, message: "这个窗口没有工作区" };
+    const cwd = gitCwd(event);
+    return cwd ? gitService.diff(cwd, filePath) : { ok: false, message: "这个窗口没有工作区" };
 });
 ipcMain.handle("git:stage", (event, filePath, selected) => {
-  const cwd = gitCwd(event);
-  return cwd ? gitService.stage(cwd, filePath, selected) : { ok: false, message: "这个窗口没有工作区" };
+    const cwd = gitCwd(event);
+    return cwd ? gitService.stage(cwd, filePath, selected) : { ok: false, message: "这个窗口没有工作区" };
 });
 ipcMain.handle("git:commit", (event, message) => {
-  const cwd = gitCwd(event);
-  return cwd ? gitService.commit(cwd, message) : { ok: false, message: "这个窗口没有工作区" };
+    const cwd = gitCwd(event);
+    return cwd ? gitService.commit(cwd, message) : { ok: false, message: "这个窗口没有工作区" };
 });
 ipcMain.handle("git:push", (event) => {
-  const cwd = gitCwd(event);
-  return cwd ? gitService.push(cwd) : { ok: false, message: "这个窗口没有工作区" };
+    const cwd = gitCwd(event);
+    return cwd ? gitService.push(cwd) : { ok: false, message: "这个窗口没有工作区" };
 });
 
 ipcMain.handle("credentials:listProviders", async () => {
-  const credentials = await credentialsPromise;
-  return credentials.listProviders();
+    const credentials = await credentialsPromise;
+    return credentials.listProviders();
 });
 
 ipcMain.handle("credentials:getStatus", async () => {
-  const credentials = await credentialsPromise;
-  return credentials.getStatus();
+    const credentials = await credentialsPromise;
+    return credentials.getStatus();
 });
 
 ipcMain.handle("credentials:saveApiKey", async (event, payload) => {
-  const credentials = await credentialsPromise;
-  const result = await credentials.saveApiKey(payload?.providerId, payload?.apiKey);
-  if (result?.status === "error") return result;
-  await publishCredentials();
-  const session = sessions.get(event.sender.id);
-  const applied = await credentials.afterApiKeySaved(result.providerId, session);
-  if (applied?.ok) {
-    broadcast("models:selected", {
-      providerId: applied.providerId,
-      modelId: applied.modelId,
-      name: applied.name,
-      live: applied.live,
-    });
-  }
-  return result;
+    const credentials = await credentialsPromise;
+    const result = await credentials.saveApiKey(payload?.providerId, payload?.apiKey);
+    if (result?.status === "error") return result;
+    await publishCredentials();
+    const session = sessions.get(event.sender.id);
+    const applied = await credentials.afterApiKeySaved(result.providerId, session);
+    if (applied?.ok) {
+        broadcast("models:selected", {
+            providerId: applied.providerId,
+            modelId: applied.modelId,
+            name: applied.name,
+            live: applied.live,
+        });
+    }
+    return result;
 });
 
 ipcMain.handle("credentials:clear", async (_event, payload) => {
-  const credentials = await credentialsPromise;
-  const result = await credentials.clearCredential(payload?.providerId);
-  await publishCredentials();
-  return result;
+    const credentials = await credentialsPromise;
+    const result = await credentials.clearCredential(payload?.providerId);
+    await publishCredentials();
+    return result;
 });
 
 ipcMain.handle("credentials:startOAuth", async (_event, payload) => {
-  const credentials = await credentialsPromise;
-  const result = await credentials.startOAuth(payload?.providerId);
-  if (result?.status !== "error") await publishCredentials();
-  return result;
+    const credentials = await credentialsPromise;
+    const result = await credentials.startOAuth(payload?.providerId);
+    if (result?.status !== "error") await publishCredentials();
+    return result;
 });
 
 ipcMain.handle("credentials:logoutOAuth", async (_event, payload) => {
-  const credentials = await credentialsPromise;
-  const result = await credentials.logoutOAuth(payload?.providerId);
-  await publishCredentials();
-  return result;
+    const credentials = await credentialsPromise;
+    const result = await credentials.logoutOAuth(payload?.providerId);
+    await publishCredentials();
+    return result;
 });
 
 ipcMain.handle("credentials:detectEnv", async (_event, payload) => {
-  const credentials = await credentialsPromise;
-  const detected = await credentials.detectEnv(payload?.providerId);
-  await publishCredentials();
-  return detected;
+    const credentials = await credentialsPromise;
+    const detected = await credentials.detectEnv(payload?.providerId);
+    await publishCredentials();
+    return detected;
 });
 
 ipcMain.handle("models:get", async () => {
-  const credentials = await credentialsPromise;
-  return credentials.getSelectedModel();
+    const credentials = await credentialsPromise;
+    return credentials.getSelectedModel();
 });
 
 ipcMain.handle("models:set", async (event, payload) => {
-  const credentials = await credentialsPromise;
-  const saved = await credentials.setSelectedModel(payload?.providerId, payload?.modelId);
-  if (!saved.ok) return saved;
-  const session = sessions.get(event.sender.id);
-  let live = null;
-  if (session?.setModel) {
-    try {
-      live = await session.setModel(saved.providerId, saved.modelId);
-    } catch (error) {
-      live = {
-        ok: false,
-        message: error instanceof Error ? error.message : "模型切换失败",
-      };
+    const credentials = await credentialsPromise;
+    const saved = await credentials.setSelectedModel(payload?.providerId, payload?.modelId);
+    if (!saved.ok) return saved;
+    const session = sessions.get(event.sender.id);
+    let live = null;
+    if (session?.setModel) {
+        try {
+            live = await session.setModel(saved.providerId, saved.modelId);
+        } catch (error) {
+            live = {
+                ok: false,
+                message: error instanceof Error ? error.message : "模型切换失败",
+            };
+        }
     }
-  }
-  broadcast("models:selected", {
-    providerId: saved.providerId,
-    modelId: saved.modelId,
-    name: saved.name,
-    live,
-  });
-  return { ...saved, live };
+    broadcast("models:selected", {
+        providerId: saved.providerId,
+        modelId: saved.modelId,
+        name: saved.name,
+        live,
+    });
+    return { ...saved, live };
 });
 
 async function modelSettingsFor(sender) {
-  const credentials = await credentialsPromise;
-  const stored = await credentials.getModelSettings();
-  const session = sessions.get(sender.id);
-  let live = null;
-  try {
-    live = session?.getThinkingState ? await session.getThinkingState() : null;
-  } catch {
-    live = null;
-  }
-  const sameModel = live && live.providerId === stored.providerId && live.modelId === stored.modelId;
-  return sameModel ? { ...stored, ...live } : stored;
+    const credentials = await credentialsPromise;
+    const stored = await credentials.getModelSettings();
+    const session = sessions.get(sender.id);
+    let live = null;
+    try {
+        live = session?.getThinkingState ? await session.getThinkingState() : null;
+    } catch {
+        live = null;
+    }
+    const sameModel = live && live.providerId === stored.providerId && live.modelId === stored.modelId;
+    return sameModel ? { ...stored, ...live } : stored;
 }
 
 ipcMain.handle("models:get-settings", (event) => modelSettingsFor(event.sender));
 
 ipcMain.handle("models:set-thinking", async (event, level) => {
-  const credentials = await credentialsPromise;
-  const saved = await credentials.saveThinkingLevel(level);
-  if (!saved.ok) return saved;
-  const session = sessions.get(event.sender.id);
-  if (session?.setThinkingLevel) {
-    try {
-      await session.setThinkingLevel(level);
-    } catch {
-      // The saved default still applies when the engine starts next time.
+    const credentials = await credentialsPromise;
+    const saved = await credentials.saveThinkingLevel(level);
+    if (!saved.ok) return saved;
+    const session = sessions.get(event.sender.id);
+    if (session?.setThinkingLevel) {
+        try {
+            await session.setThinkingLevel(level);
+        } catch {
+            // The saved default still applies when the engine starts next time.
+        }
     }
-  }
-  return { ok: true, settings: await modelSettingsFor(event.sender) };
+    return { ok: true, settings: await modelSettingsFor(event.sender) };
 });
 
 credentialsPromise.then((credentials) => {
-  credentials.setBrowserOpener((url) => shell.openExternal(url));
-  credentials.setOAuthEmitter((event) => broadcast("credentials:oauth-event", event));
+    credentials.setBrowserOpener((url) => shell.openExternal(url));
+    credentials.setOAuthEmitter((event) => broadcast("credentials:oauth-event", event));
 });
 
 let quitting = false;
 app.on("before-quit", (event) => {
-  if (quitting) return;
-  const pending = [...sessions.values()].filter((session) => !session.isStopping());
-  if (pending.length === 0) return;
-  event.preventDefault();
-  quitting = true;
-  Promise.all(pending.map((session) => session.stop())).finally(() => {
-    sessions.clear();
-    app.quit();
-  });
+    if (quitting) return;
+    const pending = [...sessions.values()].filter((session) => !session.isStopping());
+    if (pending.length === 0) return;
+    event.preventDefault();
+    quitting = true;
+    Promise.all(pending.map((session) => session.stop())).finally(() => {
+        sessions.clear();
+        app.quit();
+    });
 });
 
 app.whenReady().then(() => {
-  createWindow();
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+    createWindow();
+    app.on("activate", () => {
+        if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+    if (process.platform !== "darwin") app.quit();
 });

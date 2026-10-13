@@ -9,13 +9,13 @@ applyThemePreset(readThemePreset());
 
 const root = document.getElementById("root");
 if (!root) {
-  throw new Error("Root element #root is missing");
+    throw new Error("Root element #root is missing");
 }
 
 createRoot(root).render(
-  <StrictMode>
-    <RpcProvider>
-      <App />
-    </RpcProvider>
-  </StrictMode>,
+    <StrictMode>
+        <RpcProvider>
+            <App />
+        </RpcProvider>
+    </StrictMode>,
 );

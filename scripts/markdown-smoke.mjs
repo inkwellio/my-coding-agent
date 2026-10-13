@@ -5,7 +5,7 @@ import { Lexer } from "marked";
 assert.equal(safeHref("https://example.com/docs"), "https://example.com/docs");
 assert.equal(safeHref("mailto:hello@example.com"), "mailto:hello@example.com");
 for (const href of ["javascript:alert(1)", "data:text/html,<script>1</script>", "file:///etc/passwd", "#/settings"]) {
-  assert.equal(safeHref(href), null);
+    assert.equal(safeHref(href), null);
 }
 assert.equal(plainText("A &amp; B &lt;script&gt; &#x1f44d;"), "A & B <script> 👍");
 
