@@ -1,0 +1,252 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("./assets/fonts/geist-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("./assets/fonts/jetbrains-mono-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/noto-sc-0.woff2") format("woff2");
+  unicode-range: U+a9, U+b7, U+2022, U+2026, U+21b5, U+21e7, U+2303, U+2318, U+2325, U+2713, U+3001-3002, U+4e00-4e01, U+4e0a-4e0b, U+4e0d-4e0e, U+4e22, U+4e25, U+4e2a, U+4e2d, U+4e34, U+4e3a-4e3b, U+4e49, U+4e4f, U+4e86, U+4e8e, U+4e92, U+4e9b, U+4ea4, U+4ea7, U+4eab, U+4eba, U+4ec5, U+4ecd-4ece, U+4ed3, U+4ee3-4ee5, U+4eec, U+4ef6, U+4efb, U+4f19-4f1a, U+4f20, U+4f34, U+4f4d-4f4e, U+4f53, U+4f5c, U+4f60, U+4f7f, U+4f8b, U+4f9d, U+4fa7, U+4fdd, U+4fe1, U+4fee, U+503c, U+504f, U+505a, U+505c, U+50a8, U+50cf, U+5141, U+5143, U+5148-5149, U+514b, U+514d, U+5165, U+5168, U+516d, U+5171, U+5173, U+5177, U+5185;
+}
+
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/noto-sc-1.woff2") format("woff2");
+  unicode-range: U+518d, U+5199, U+51b2, U+51b7, U+51bd, U+51c0, U+51c6, U+51d1, U+51ed, U+51fa-51fb, U+5206-5207, U+5217, U+5219-521b, U+521d, U+5220, U+522b, U+5230, U+5236-5237, U+524d, U+526a, U+52a0-52a1, U+52a8-52a9, U+5305, U+5316-5317, U+533a, U+534f, U+5355, U+5357, U+5360, U+5373, U+5382, U+5386, U+539f, U+53ca, U+53cc-53cd, U+53d1, U+53d6-53d8, U+53e3, U+53ea, U+53ef-53f0, U+53f2-53f3, U+53f7, U+5408, U+540c-540e, U+5411, U+542f, U+544a, U+547d, U+5524, U+5668, U+56de, U+56e2, U+56f4, U+56fe, U+5728, U+5730, U+573a, U+5740, U+5747, U+574f, U+5757, U+578b, U+57fa, U+5883, U+589e;
+}
+
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/noto-sc-2.woff2") format("woff2");
+  unicode-range: U+5904, U+5907, U+590d, U+5916, U+591a, U+5927, U+5929, U+5931, U+5939, U+5957, U+597d, U+5982, U+59cb, U+5b57-5b58, U+5b83, U+5b89, U+5b8c, U+5b9a, U+5b9e, U+5ba1, U+5bb6, U+5bb9, U+5bbf, U+5bc6, U+5bf9, U+5bfc, U+5c06, U+5c0f, U+5c1d, U+5c31, U+5c40, U+5c4f, U+5c55, U+5d4c, U+5de5, U+5dee, U+5df2, U+5e02-5e03, U+5e2e, U+5e38, U+5e45, U+5e72, U+5e76, U+5e8f, U+5e93, U+5ea6, U+5ef6, U+5efa, U+5f00, U+5f02-5f03, U+5f0f, U+5f15, U+5f39-5f3a, U+5f52-5f53, U+5f55, U+5f62, U+5f84-5f85, U+5fae, U+5fc3, U+5feb, U+6001, U+601d, U+6027, U+60f3, U+6108, U+610f, U+611f, U+6210-6211, U+6216, U+622a, U+6237, U+6240, U+624b;
+}
+
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/noto-sc-3.woff2") format("woff2");
+  unicode-range: U+6253, U+6267, U+6269, U+6279, U+628a, U+62a4-62a5, U+62c9, U+62df, U+62e6, U+62e9, U+62fc, U+6301-6302, U+6307, U+6309, U+6362, U+636e, U+6377, U+6388, U+6392, U+63a2, U+63a5, U+63a7-63a8, U+63cf-63d0, U+63d2, U+63e1, U+641c, U+64a4, U+64cd-64ce, U+652f, U+6536, U+6539, U+653e, U+6548, U+654f, U+655b, U+6570, U+6572, U+6574, U+6587, U+65ad, U+65b0, U+65b9, U+65cf, U+65e0, U+65e9, U+65f6, U+660e, U+6628, U+662f, U+663c, U+663e, U+666f, U+667a, U+6682, U+6697, U+66f4, U+6700, U+6709, U+670d, U+671f, U+672a, U+672c, U+673a, U+6742-6743, U+6761, U+6765, U+677f, U+6781, U+6784, U+6790, U+679c-679d, U+67b6, U+67d3;
+}
+
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/noto-sc-4.woff2") format("woff2");
+  unicode-range: U+67e5, U+6807-6808, U+680f, U+6811, U+6821, U+6838, U+683c, U+6863, U+68c0, U+6a21, U+6a2a, U+6b21-6b22, U+6b27, U+6b62-6b65, U+6b7b, U+6bcf, U+6bd4, U+6c34, U+6c38, U+6c42, U+6c61, U+6c99, U+6cd5, U+6ce8, U+6d3b, U+6d41, U+6d4b, U+6d4f, U+6d88-6d89, U+6df1, U+6dfb, U+6e05, U+6e32, U+6e38, U+6ea2, U+6ed1, U+6ee4, U+6f14, U+6fc0, U+7070, U+70b9, U+70ed, U+7126, U+7136, U+7247, U+72b6, U+72ec, U+7387, U+73af-73b0, U+7406, U+751f, U+7528, U+754c, U+7559, U+7565, U+7574, U+767b, U+767d, U+7684, U+76d2, U+76d6, U+76d8, U+76ee, U+76f4, U+770b, U+771f, U+7729, U+77e2, U+77e5, U+7801, U+7834, U+786e, U+78b0;
+}
+
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/noto-sc-5.woff2") format("woff2");
+  unicode-range: U+793a, U+79bb, U+79cd, U+79d2, U+7a0b, U+7a7a, U+7a81, U+7a97, U+7acb, U+7ade, U+7aef, U+7b26, U+7b49, U+7b56, U+7b97, U+7bb1, U+7c7b, U+7c98, U+7cbe, U+7cfb, U+7d20, U+7d22, U+7d27, U+7ea7, U+7eaf, U+7eb9, U+7ebf, U+7ec4, U+7ec7-7ec8, U+7ed1, U+7ed3, U+7edc-7edd, U+7edf, U+7ee7, U+7eea, U+7eed, U+7ef4, U+7f13, U+7f16, U+7f3a, U+7f51, U+7f6e, U+8003, U+8017, U+8054, U+805a, U+80fd, U+810f, U+811a, U+81ea, U+81f3-81f4, U+8212, U+8272, U+8282, U+8303, U+8350, U+84dd, U+853d, U+884c, U+8865, U+88c5, U+8981, U+8986, U+89c2, U+89c4, U+89c6, U+89c8, U+89e3, U+89e6, U+8a00, U+8b66, U+8ba1, U+8ba4, U+8bb8, U+8bbe-8bbf, U+8bc1;
+}
+
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/noto-sc-6.woff2") format("woff2");
+  unicode-range: U+8bc6, U+8bd5, U+8bdd, U+8bed, U+8bf4, U+8bf7, U+8bfb, U+8c03, U+8d1f, U+8d25-8d26, U+8d56, U+8d77, U+8d85, U+8ddf, U+8def, U+8e2a, U+8f6c, U+8f7d, U+8f91, U+8f93, U+8fb9, U+8fc7, U+8fce, U+8fd0-8fd1, U+8fd4, U+8fd8-8fd9, U+8fdb-8fdc, U+8fde-8fdf, U+8ff0, U+9000-9002, U+9009, U+9010, U+901a, U+901f, U+907f, U+90e8, U+914d, U+9192, U+91c7, U+91ca, U+91cd, U+91cf, U+9274, U+9488, U+94a5, U+94fe, U+9500-9501, U+9519, U+952e, U+95ed-95ee, U+95f2, U+961f, U+9632, U+9636, U+964d, U+9650, U+9664, U+9669, U+9686, U+968f, U+9694, U+969c, U+96f6, U+9700, U+9759, U+975e, U+9762, U+9879, U+987f, U+9884, U+9891;
+}
+
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/noto-sc-7.woff2") format("woff2");
+  unicode-range: U+9898, U+98ce, U+9a8c, U+9aa4, U+9ad8, U+9ed1, U+9ed8, U+ff08-ff09, U+ff0c, U+ff1a-ff1b;
+}
+
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/noto-sc-8.woff2") format("woff2");
+  unicode-range: U+2191, U+2193, U+25c9, U+25cf, U+300c-300d, U+4e09, U+4e13, U+4e24, U+4e66, U+4e8b, U+4e91, U+4f18, U+4f9b, U+5047, U+51cf, U+529b, U+529f, U+5339, U+53c9, U+5404, U+5410, U+541e, U+5468, U+54cd, U+5546, U+56e0, U+585e, U+58f0, U+5b50, U+5b88, U+5c01, U+5c04, U+5c42, U+5c5e, U+5d29, U+5e27, U+5e73, U+5e94, U+5f71, U+5f80, U+5faa, U+5fd7-5fd8, U+603b, U+6062, U+6270, U+6295, U+62e5, U+62f7, U+65e5, U+672b, U+675c, U+69fd, U+6bb5, U+6beb, U+6c60, U+6ca1, U+6cc4, U+6df7, U+6e21, U+6e83, U+6e90, U+6f5c, U+7269, U+74f6, U+76ae, U+77e9, U+786c, U+7981, U+7aa5, U+7ba1, U+7ecf, U+7f29, U+8005, U+8026, U+80a9, U+822a, U+82af, U+843d, U+8868, U+88ab, U+89c9, U+8bae-8baf, U+8bd1, U+8be2, U+8d1d, U+8d39, U+8dc3, U+8df3, U+8f6f, U+8f7b, U+9020, U+9053, U+9065, U+957f, U+9635, U+963b, U+9645, U+96c6, U+9732, U+9886, U+9888, U+9a7b;
+}
+
+@font-face {
+  font-family: "Material Symbols Outlined";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("./assets/fonts/material-symbols.woff2") format("woff2");
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: rgb(var(--c-surface));
+  color: rgb(var(--c-on-surface));
+  overscroll-behavior: none;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body.resize-dragging {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+body.resize-dragging * {
+  cursor: col-resize !important;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--c-outline-variant)) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: rgb(var(--c-outline-variant));
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--c-outline));
+}
+
+.scrollbar-hidden {
+  scrollbar-width: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
+
+@layer components {
+  .popover-panel {
+    @apply max-h-64 overflow-y-auto rounded-xl border border-outline-variant/60 bg-surface-container-high py-1 shadow-[0_8px_24px_rgba(0,0,0,0.25)];
+  }
+}
+
+@layer base {
+  .material-symbols-outlined {
+    font-family: "Material Symbols Outlined";
+    font-weight: normal;
+    font-style: normal;
+    font-size: 24px;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    font-feature-settings: "liga";
+    -webkit-font-feature-settings: "liga";
+    font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+  }
+}
+
+.glow-subtle {
+  box-shadow: 0 0 15px -3px rgba(124, 130, 246, 0.15);
+}
+
+.input-disabled-stripes {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.015),
+    rgba(255, 255, 255, 0.015) 8px,
+    rgba(0, 0, 0, 0.05) 8px,
+    rgba(0, 0, 0, 0.05) 16px
+  );
+}
+
+.titlebar-drag {
+  -webkit-app-region: drag;
+}
+
+.titlebar-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+.assistant-markdown > :first-child { margin-top: 0; }
+.assistant-markdown > :last-child { margin-bottom: 0; }
+.assistant-markdown p,
+.assistant-markdown ul,
+.assistant-markdown ol,
+.assistant-markdown blockquote,
+.assistant-markdown .markdown-code-block,
+.assistant-markdown .markdown-table-wrap { margin: 0.65rem 0; }
+.assistant-markdown h1,
+.assistant-markdown h2,
+.assistant-markdown h3,
+.assistant-markdown h4,
+.assistant-markdown h5,
+.assistant-markdown h6 { margin: 1rem 0 0.45rem; font-weight: 650; line-height: 1.35; }
+.assistant-markdown h1 { font-size: 1.35rem; }
+.assistant-markdown h2 { font-size: 1.18rem; }
+.assistant-markdown h3 { font-size: 1.05rem; }
+.assistant-markdown ul { list-style: disc; padding-left: 1.4rem; }
+.assistant-markdown ol { list-style: decimal; padding-left: 1.4rem; }
+.assistant-markdown li { padding-left: 0.1rem; margin: 0.22rem 0; }
+.assistant-markdown li > p:first-of-type { display: inline; margin: 0; }
+.assistant-markdown li > input { margin-right: 0.4rem; accent-color: rgb(var(--c-primary-container)); }
+.assistant-markdown blockquote { padding-left: 0.85rem; border-left: 3px solid rgb(var(--c-outline-variant)); color: rgb(var(--c-on-surface-variant)); }
+.assistant-markdown a { color: rgb(var(--c-secondary)); text-decoration: underline; text-underline-offset: 2px; }
+.assistant-markdown a:hover { color: rgb(var(--c-primary)); }
+.assistant-markdown :not(pre) > code { padding: 0.12rem 0.3rem; border-radius: 0.25rem; background: rgb(var(--c-surface-container-high)); font-family: "JetBrains Mono", monospace; font-size: 0.9em; }
+.assistant-markdown .markdown-code-block { overflow: hidden; border: 1px solid rgb(var(--c-outline-variant)); border-radius: 0.5rem; background: rgb(var(--c-surface-container-lowest)); }
+.assistant-markdown .markdown-code-label { padding: 0.35rem 0.75rem; border-bottom: 1px solid rgb(var(--c-surface-container-high)); color: rgb(var(--c-on-surface-variant)); font-family: "JetBrains Mono", monospace; font-size: 0.72rem; }
+.assistant-markdown pre { overflow-x: auto; padding: 0.75rem; white-space: pre; font-family: "JetBrains Mono", monospace; font-size: 0.78rem; line-height: 1.5; }
+.assistant-markdown .markdown-table-wrap { max-width: 100%; overflow-x: auto; }
+.assistant-markdown table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.assistant-markdown th,
+.assistant-markdown td { border: 1px solid rgb(var(--c-outline-variant)); padding: 0.4rem 0.6rem; }
+.assistant-markdown th { background: rgb(var(--c-surface-container-high)); font-weight: 600; }
+.assistant-markdown hr { margin: 1rem 0; border: 0; border-top: 1px solid rgb(var(--c-outline-variant)); }
