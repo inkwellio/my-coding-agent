@@ -145,12 +145,12 @@ export function McpPanel() {
                     <>
                         <label className="block space-y-1 text-xs text-on-surface-variant">可执行命令<input className={inputClass} value={form.command} onChange={(event) => setForm({ ...form, command: event.target.value })} placeholder="例如 npx 或绝对路径" /></label>
                         <label className="block space-y-1 text-xs text-on-surface-variant">参数（每行一个）<textarea className={inputClass} rows={3} value={form.args} onChange={(event) => setForm({ ...form, args: event.target.value })} placeholder={"-y\n@modelcontextprotocol/server-filesystem\n/path/to/project"} /></label>
-                        <label className="block space-y-1 text-xs text-on-surface-variant">环境变量（每行 KEY=VALUE）<textarea className={inputClass} rows={2} value={form.env} onChange={(event) => setForm({ ...form, env: event.target.value })} placeholder="可选" /></label>
+                        <label className="block space-y-1 text-xs text-on-surface-variant">环境变量（每行 KEY=VALUE）<textarea className={inputClass} rows={2} value={form.env} onChange={(event) => setForm({ ...form, env: event.target.value })} placeholder="可选；已保存的值显示为 ••••••，不修改即沿用原值" /></label>
                     </>
                 ) : (
                     <>
                         <label className="block space-y-1 text-xs text-on-surface-variant">MCP 地址<input className={inputClass} value={form.url} onChange={(event) => setForm({ ...form, url: event.target.value })} placeholder="https://example.com/mcp" /></label>
-                        <label className="block space-y-1 text-xs text-on-surface-variant">请求头（每行 KEY=VALUE）<textarea className={inputClass} rows={2} value={form.headers} onChange={(event) => setForm({ ...form, headers: event.target.value })} placeholder="例如 Authorization=Bearer ..." /></label>
+                        <label className="block space-y-1 text-xs text-on-surface-variant">请求头（每行 KEY=VALUE）<textarea className={inputClass} rows={2} value={form.headers} onChange={(event) => setForm({ ...form, headers: event.target.value })} placeholder="例如 Authorization=Bearer ...；已保存的值显示为 ••••••，不修改即沿用原值" /></label>
                     </>
                 )}
                 <div className="flex gap-2">

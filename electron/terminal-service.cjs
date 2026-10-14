@@ -26,16 +26,22 @@ function createTerminalService(send, { spawnProcess = spawn } = {}) {
         if (generations.get(id) !== generation) return { ok: false, message: "终端启动已取消" };
         const shell = process.platform === "win32" ? (process.env.ComSpec || "cmd.exe") : (process.env.SHELL || "/bin/sh");
         const windows = process.platform === "win32";
-        const child = spawnProcess(sandboxOptions ? "node" : shell, sandboxOptions
+        // Run the sandbox wrapper with Electron's own Node so it works without Node on PATH.
+        const child = spawnProcess(sandboxOptions ? process.execPath : shell, sandboxOptions
             ? [path.join(__dirname, "sandbox-terminal.mjs")]
             : windows ? ["/D", "/Q", "/K", "chcp 65001>nul"] : [], {
             cwd,
             env: { ...process.env, TERM: "dumb", NO_COLOR: "1", ...(windows ? { PROMPT: " " } : {}),
+                ...(sandboxOptions ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
                 PI_DESKTOP_SANDBOX_CONFIG: sandboxOptions ? JSON.stringify(sandboxOptions) : "" },
             stdio: sandboxOptions ? ["pipe", "pipe", "pipe", "ipc"] : ["pipe", "pipe", "pipe"],
             windowsHide: true,
         });
         terminals.set(id, child);
+        // A write racing the shell's exit raises EPIPE asynchronously; unhandled, it crashes the main process.
+        child.stdin.on("error", (error) => {
+            if (terminals.get(id) === child) send(id, { type: "error", data: error.message });
+        });
         for (const stream of [child.stdout, child.stderr]) {
             const decoder = new StringDecoder("utf8");
             stream.on("data", (data) => {

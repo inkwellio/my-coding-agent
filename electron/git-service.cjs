@@ -25,8 +25,13 @@ async function status(cwd) {
             const index = record.slice(0, 1);
             const worktree = record.slice(1, 2);
             const filePath = record.slice(3);
-            files.push({ path: filePath, index, worktree, staged: index !== " " && index !== "?" });
-            if (index === "R" || index === "C" || worktree === "R" || worktree === "C") i += 1;
+            const file = { path: filePath, index, worktree, staged: index !== " " && index !== "?" };
+            if (index === "R" || index === "C" || worktree === "R" || worktree === "C") {
+                // -z puts the original path of a rename or copy in the next record.
+                i += 1;
+                if (records[i]) file.from = records[i];
+            }
+            files.push(file);
         }
         const branch = (await git(root, ["branch", "--show-current"])).trim() || "HEAD";
         return { ok: true, branch, files };
@@ -41,7 +46,8 @@ async function diff(cwd, filePath) {
     const file = current.files.find((item) => item.path === filePath);
     if (!file) return { ok: false, message: "文件不在当前变更列表中" };
     try {
-        const root = (await git(cwd, ["rev-parse", "--show-toplevel"])).trim();
+        // Git prints forward slashes on Windows; normalize before comparing paths.
+        const root = path.resolve((await git(cwd, ["rev-parse", "--show-toplevel"])).trim());
         const parts = [];
         if (file.staged) parts.push(await git(root, ["diff", "--cached", "--no-ext-diff", "--", filePath]));
         if (file.worktree !== " " && file.worktree !== "?") {
@@ -49,7 +55,8 @@ async function diff(cwd, filePath) {
         }
         if (file.index === "?" && file.worktree === "?") {
             const absolute = path.resolve(root, filePath);
-            if (absolute !== root && absolute.startsWith(root + path.sep)) {
+            const relative = path.relative(root, absolute);
+            if (relative && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)) {
                 const info = await fs.lstat(absolute);
                 if (!info.isFile()) parts.push("此文件类型无法预览");
                 else if (info.size > 200000) parts.push("文件超过 200 KB，暂不预览");
@@ -68,7 +75,8 @@ async function diff(cwd, filePath) {
 async function stage(cwd, filePath, selected) {
     const current = await status(cwd);
     if (!current.ok) return current;
-    if (filePath !== null && !current.files.some((item) => item.path === filePath)) {
+    const file = filePath === null ? null : current.files.find((item) => item.path === filePath);
+    if (filePath !== null && !file) {
         return { ok: false, message: "文件不在当前变更列表中" };
     }
     try {
@@ -76,7 +84,10 @@ async function stage(cwd, filePath, selected) {
         if (selected) {
             await git(root, filePath === null ? ["add", "--all"] : ["add", "--", filePath]);
         } else if (filePath !== null) {
-            await git(root, ["reset", "-q", "--", filePath]);
+            // Unstaging a rename must also restore the staged deletion of its original path.
+            await git(root, ["reset", "-q", "--", filePath, ...(file.from && file.index === "R" ? [file.from] : [])]);
+        } else {
+            await git(root, ["reset", "-q"]);
         }
         return await status(cwd);
     } catch (error) {

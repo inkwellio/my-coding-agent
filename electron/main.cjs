@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, Menu } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
@@ -84,6 +84,42 @@ function windowFromEvent(event) {
     return BrowserWindow.fromWebContents(event.sender);
 }
 
+const EXTERNAL_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
+const DEV_ORIGIN = "http://127.0.0.1:5173";
+
+function openExternalLink(url) {
+    try {
+        if (EXTERNAL_PROTOCOLS.has(new URL(url).protocol)) void shell.openExternal(url);
+    } catch {
+        // Ignore malformed links.
+    }
+}
+
+function isAppUrl(url) {
+    try {
+        const target = new URL(url);
+        if (isDev) return target.origin === DEV_ORIGIN;
+        return target.protocol === "file:" && path.resolve(decodeURIComponent(target.pathname.replace(/^\/([A-Za-z]:)/, "$1"))) === path.join(__dirname, "../dist/index.html");
+    } catch {
+        return false;
+    }
+}
+
+// Model output can contain links. They open in the system browser, never inside an
+// Electron window that could reach the preload bridge.
+app.on("web-contents-created", (_event, contents) => {
+    contents.setWindowOpenHandler(({ url }) => {
+        openExternalLink(url);
+        return { action: "deny" };
+    });
+    contents.on("will-navigate", (event, url) => {
+        if (isAppUrl(url)) return;
+        event.preventDefault();
+        openExternalLink(url);
+    });
+    contents.on("will-attach-webview", (event) => event.preventDefault());
+});
+
 function createRpcSession(win, host, cwd, cwdWarning = null, sandboxOptions = null) {
     return host.createWindowSession({
         webContentsId: win.webContents.id,
@@ -159,6 +195,19 @@ async function switchWindowWorkspaceNow(win, cwd) {
     }
 }
 
+const SHUTDOWN_TIMEOUT_MS = 15_000;
+
+/** A stuck cleanup step must not keep a window or the app open forever. */
+function withShutdownTimeout(task) {
+    let timer;
+    return Promise.race([
+        Promise.resolve(task).catch((error) => {
+            console.error("[pi-desktop] shutdown cleanup failed", error instanceof Error ? error.message : error);
+        }),
+        new Promise((done) => { timer = setTimeout(done, SHUTDOWN_TIMEOUT_MS); }),
+    ]).finally(() => clearTimeout(timer));
+}
+
 function createWindow() {
     const win = new BrowserWindow({
         width: 1440,
@@ -202,12 +251,12 @@ function createWindow() {
         event.preventDefault();
         closing = true;
         win.__piClosing = true;
-        Promise.allSettled([sandboxTasks.get(webContentsId), workspaceTasks.get(webContentsId)]).then(async () => {
+        withShutdownTimeout(Promise.allSettled([sandboxTasks.get(webContentsId), workspaceTasks.get(webContentsId)]).then(async () => {
             await terminalService.stop(webContentsId);
             await sessions.get(webContentsId)?.stop();
             const sandbox = await sandboxPromise;
             await sandbox.release(webContentsId);
-        }).finally(() => {
+        })).finally(() => {
             sessions.delete(webContentsId);
             if (!win.isDestroyed()) win.destroy();
         });
@@ -537,14 +586,18 @@ ipcMain.handle("credentials:clear", async (_event, payload) => {
     return result;
 });
 
-ipcMain.handle("models:get", async () => {
+function settingsCwd(sender) {
+    return sessions.get(sender.id)?.snapshot().cwd || process.cwd();
+}
+
+ipcMain.handle("models:get", async (event) => {
     const credentials = await credentialsPromise;
-    return credentials.getSelectedModel();
+    return credentials.getSelectedModel(settingsCwd(event.sender));
 });
 
 ipcMain.handle("models:set", async (event, payload) => {
     const credentials = await credentialsPromise;
-    const saved = await credentials.setSelectedModel(payload?.providerId, payload?.modelId);
+    const saved = await credentials.setSelectedModel(payload?.providerId, payload?.modelId, settingsCwd(event.sender));
     if (!saved.ok) return saved;
     const session = sessions.get(event.sender.id);
     let live = null;
@@ -569,7 +622,7 @@ ipcMain.handle("models:set", async (event, payload) => {
 
 async function modelSettingsFor(sender) {
     const credentials = await credentialsPromise;
-    const stored = await credentials.getModelSettings();
+    const stored = await credentials.getModelSettings(settingsCwd(sender));
     const session = sessions.get(sender.id);
     let live = null;
     try {
@@ -585,7 +638,7 @@ ipcMain.handle("models:get-settings", (event) => modelSettingsFor(event.sender))
 
 ipcMain.handle("models:set-thinking", async (event, level) => {
     const credentials = await credentialsPromise;
-    const saved = await credentials.saveThinkingLevel(level);
+    const saved = await credentials.saveThinkingLevel(level, settingsCwd(event.sender));
     if (!saved.ok) return saved;
     const session = sessions.get(event.sender.id);
     if (session?.setThinkingLevel) {
@@ -605,14 +658,14 @@ app.on("before-quit", (event) => {
     if (pending.length === 0) return;
     event.preventDefault();
     quitting = true;
-    Promise.all(pending.map(async (session) => {
+    withShutdownTimeout(Promise.all(pending.map(async (session) => {
         const id = session.snapshot().webContentsId;
         await Promise.allSettled([sandboxTasks.get(id), workspaceTasks.get(id)]);
         await terminalService.stop(id);
         await sessions.get(id)?.stop();
         const sandbox = await sandboxPromise;
         await sandbox.release(id);
-    })).finally(() => {
+    }))).finally(() => {
         sessions.clear();
         app.quit();
     });

@@ -19,8 +19,12 @@ export async function testMcpServer(name, cwd) {
         let stdout = "";
         let stderr = "";
         let settled = false;
+        let overflow = false;
         const timer = setTimeout(() => child.kill(), 75000);
-        child.stdout.on("data", (chunk) => { stdout += chunk; if (stdout.length > 1_000_000) child.kill(); });
+        child.stdout.on("data", (chunk) => {
+            stdout += chunk;
+            if (stdout.length > 1_000_000 && !overflow) { overflow = true; child.kill(); }
+        });
         child.stderr.on("data", (chunk) => { stderr += chunk; if (stderr.length > 10000) stderr = stderr.slice(-10000); });
         child.on("error", (error) => {
             if (settled) return;
@@ -35,7 +39,8 @@ export async function testMcpServer(name, cwd) {
             let report;
             try { report = JSON.parse(stdout); }
             catch {
-                resolve({ ok: false, message: signal ? "Pi MCP 检查超时" : (stderr.trim() || "Pi 未返回 MCP 检查结果").slice(0, 500) });
+                const message = overflow ? "Pi MCP 检查输出过大" : signal ? "Pi MCP 检查超时" : (stderr.trim() || "Pi 未返回 MCP 检查结果").slice(0, 500);
+                resolve({ ok: false, message });
                 return;
             }
             const server = findServer(report, name);

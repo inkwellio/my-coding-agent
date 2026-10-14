@@ -3,6 +3,28 @@ const path = require("node:path");
 
 const SERVER_NAME = /^[A-Za-z0-9_-]+$/;
 const EXPOSURES = new Set(["codemode", "deferred", "direct", "hidden"]);
+// Env values and headers often hold tokens. The renderer only sees this placeholder;
+// saving it back keeps the stored value.
+const MASKED_VALUE = "••••••";
+
+function maskValues(values) {
+    if (!values || typeof values !== "object" || Array.isArray(values)) return values;
+    return Object.fromEntries(Object.entries(values).map(([key, value]) => [key, value ? MASKED_VALUE : value]));
+}
+
+function restoreMasked(values, previous, label) {
+    const restored = {};
+    for (const [key, value] of Object.entries(values)) {
+        if (value !== MASKED_VALUE) {
+            restored[key] = value;
+            continue;
+        }
+        const stored = previous && typeof previous === "object" ? previous[key] : undefined;
+        if (typeof stored !== "string") throw new Error(`请重新填写${label} ${key} 的值`);
+        restored[key] = stored;
+    }
+    return restored;
+}
 
 function readConfig(filePath) {
     if (!fs.existsSync(filePath)) return { mcpServers: {} };
@@ -52,13 +74,23 @@ function validate(value) {
 
 function toRow(name, config) {
     const entry = config && typeof config === "object" ? config : {};
-    return { ...entry, id: name, name, transport: entry.url ? "http" : "stdio", enabled: entry.enabled !== false, exposure: entry.exposure ?? "codemode" };
+    const row = { ...entry, id: name, name, transport: entry.url ? "http" : "stdio", enabled: entry.enabled !== false, exposure: entry.exposure ?? "codemode" };
+    if (row.env !== undefined) row.env = maskValues(row.env);
+    if (row.headers !== undefined) row.headers = maskValues(row.headers);
+    return row;
 }
 
 function createMcpStore(filePath, legacyPath) {
     function migrateLegacy() {
         if (!legacyPath || !fs.existsSync(legacyPath)) return;
-        const legacy = JSON.parse(fs.readFileSync(legacyPath, "utf8"));
+        let legacy;
+        try {
+            legacy = JSON.parse(fs.readFileSync(legacyPath, "utf8"));
+        } catch {
+            // A damaged legacy file cannot be migrated; set it aside so it stops blocking every MCP action.
+            fs.renameSync(legacyPath, `${legacyPath}.invalid`);
+            return;
+        }
         if (!Array.isArray(legacy?.servers) || legacy.servers.length === 0) return;
         const data = readConfig(filePath);
         let changed = false;
@@ -96,6 +128,8 @@ function createMcpStore(filePath, legacyPath) {
             if (oldName && !Object.hasOwn(data.mcpServers, oldName)) throw new Error("MCP 服务不存在");
             if (Object.keys(data.mcpServers).some((key) => key !== oldName && key.replace(/-/g, "_") === name.replace(/-/g, "_"))) throw new Error("MCP 服务名称已存在");
             const previous = oldName ? data.mcpServers[oldName] : {};
+            if (config.env) config.env = restoreMasked(config.env, previous?.env, "环境变量");
+            if (config.headers) config.headers = restoreMasked(config.headers, previous?.headers, "请求头");
             if (oldName && oldName !== name) delete data.mcpServers[oldName];
             const merged = { ...previous, ...config };
             if (config.url) { delete merged.command; delete merged.args; delete merged.env; delete merged.cwd; }

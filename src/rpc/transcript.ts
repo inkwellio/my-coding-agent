@@ -121,8 +121,8 @@ export function applyRpcEvent(blocks: TranscriptBlock[], event: RpcWireEvent): T
     return blocks;
 }
 
-export function appendUserBlock(blocks: TranscriptBlock[], text: string): TranscriptBlock[] {
-    return blocks.concat({ id: nextId(blocks, "user"), kind: "user", text });
+export function appendUserBlock(blocks: TranscriptBlock[], text: string, id = nextId(blocks, "user")): TranscriptBlock[] {
+    return blocks.concat({ id, kind: "user", text });
 }
 
 /** Build the same visible blocks from persisted messages after a restart or session switch. */

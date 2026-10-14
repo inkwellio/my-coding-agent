@@ -7,13 +7,19 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createWindowSession, toWireEvent } from "../electron/rpc-host.mjs";
 import { applyRpcEvent } from "../src/rpc/transcript.ts";
 
 const secret = "sk-test-fixture-key-1234";
 process.env.ANTHROPIC_API_KEY = secret;
-process.env.PI_CLI = new URL("./pi-rpc-fixture.mjs", import.meta.url).pathname;
+// fileURLToPath, not URL.pathname: on Windows the pathname is `/D:/...`, which fails the
+// PI_CLI existence check and silently falls back to the real Pi CLI.
+process.env.PI_CLI = fileURLToPath(new URL("./pi-rpc-fixture.mjs", import.meta.url));
 process.env.PI_FIXTURE_RETRY = "1";
+// Keep credential reads away from the real ~/.pi/agent.
+const agentDir = mkdtempSync(join(tmpdir(), "pi-agent-"));
+process.env.PI_CODING_AGENT_DIR = agentDir;
 const logDir = mkdtempSync(join(tmpdir(), "pi-fixture-"));
 const logPath = join(logDir, "commands.jsonl");
 process.env.PI_FIXTURE_LOG = logPath;
@@ -120,5 +126,6 @@ try {
 } finally {
     await session.stop();
     rmSync(logDir, { recursive: true, force: true });
+    rmSync(agentDir, { recursive: true, force: true });
     delete process.env.ANTHROPIC_API_KEY;
 }

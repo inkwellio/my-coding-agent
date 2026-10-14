@@ -21,6 +21,8 @@ try {
     let state = await gitService.status(cwd);
     assert.equal(state.ok, true);
     assert.equal(state.files.length, 2);
+    // Untracked previews must work when Git reports the root with forward slashes (Windows).
+    assert.match((await gitService.diff(cwd, "other.txt")).text, /^other$/m);
     assert.equal((await gitService.commit(cwd, "empty")).ok, false);
 
     state = await gitService.stage(cwd, "selected.txt", true);
@@ -45,6 +47,17 @@ try {
     assert.equal(state.files[0].staged, true);
     assert.equal((await gitService.commit(nested, "test: stage from subdirectory")).ok, true);
     assert.equal((await gitService.status(cwd)).files.length, 0);
+
+    // Unstaging a rename also unstages the deletion of the original path.
+    await git("mv", "selected.txt", "renamed.txt");
+    state = await gitService.status(cwd);
+    const renamed = state.files.find((file) => file.path === "renamed.txt");
+    assert.equal(renamed?.index, "R");
+    assert.equal(renamed?.from, "selected.txt");
+    state = await gitService.stage(cwd, "renamed.txt", false);
+    assert.equal(state.files.some((file) => file.staged), false, JSON.stringify(state.files));
+    await gitService.stage(cwd, null, true);
+    assert.equal((await gitService.commit(cwd, "test: rename")).ok, true);
 
     assert.match((await gitService.push(cwd)).message, /尚未配置远程仓库/);
     await run("git", ["init", "--bare", "-q", remote]);

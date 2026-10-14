@@ -35,5 +35,30 @@ try {
     store.remove("docs");
     assert.equal(JSON.parse(readFileSync(file, "utf8")).mcpServers.docs, undefined);
     assert.equal(store.list().length, 2);
+
+    // Secrets stay in the main process: rows carry a placeholder that saves back unchanged.
+    store.save({ name: "secret", transport: "stdio", command: "node", args: [], env: { TOKEN: "env-secret-value", EMPTY: "" } });
+    store.save({ name: "remote", transport: "http", url: "https://remote.test/mcp", headers: { Authorization: "Bearer header-secret" } });
+    const rows = store.list();
+    assert.equal(JSON.stringify(rows).includes("env-secret-value"), false);
+    assert.equal(JSON.stringify(rows).includes("header-secret"), false);
+    const secretRow = rows.find((row) => row.id === "secret");
+    assert.equal(secretRow.env.EMPTY, "");
+    store.save({ ...secretRow, env: { ...secretRow.env, EXTRA: "new" } });
+    store.save({ ...rows.find((row) => row.id === "remote"), name: "remote2" });
+    config = JSON.parse(readFileSync(file, "utf8"));
+    assert.deepEqual(config.mcpServers.secret.env, { TOKEN: "env-secret-value", EMPTY: "", EXTRA: "new" });
+    assert.equal(config.mcpServers.remote2.headers.Authorization, "Bearer header-secret");
+    assert.throws(() => store.save({ name: "fresh", transport: "stdio", command: "node", env: { TOKEN: secretRow.env.TOKEN } }), /重新填写/);
+
+    // A damaged legacy file is set aside instead of failing every MCP action.
+    const brokenDir = mkdtempSync(join(tmpdir(), "mcp-smoke-broken-"));
+    try {
+        const brokenLegacy = join(brokenDir, "mcp-servers.json");
+        writeFileSync(brokenLegacy, "{not json");
+        const brokenStore = createMcpStore(join(brokenDir, "agent", "mcp.json"), brokenLegacy);
+        assert.deepEqual(brokenStore.list(), []);
+        assert.ok(existsSync(`${brokenLegacy}.invalid`));
+    } finally { rmSync(brokenDir, { recursive: true, force: true }); }
     console.log("Pi mcp.json configuration and legacy migration passed");
 } finally { rmSync(dir, { recursive: true, force: true }); }

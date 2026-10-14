@@ -8,6 +8,8 @@ export interface GitFile {
     index: string;
     worktree: string;
     staged: boolean;
+    /** Original path of a renamed or copied file. */
+    from?: string;
 }
 
 export interface GitStatus extends GitResult {

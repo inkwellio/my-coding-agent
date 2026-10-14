@@ -68,7 +68,8 @@ function findOnPath(name) {
 /** Bundled package bin first, then a Node `pi` on PATH. `PI_CLI` overrides both. */
 export function resolvePiCli() {
     const override = process.env.PI_CLI;
-    if (override && fileExists(override)) return override;
+    // An explicit override that does not exist is an error, not a reason to run another CLI.
+    if (override) return fileExists(override) ? override : null;
     const bundled = bundledCli();
     if (bundled) return bundled;
     const onPath = findOnPath(process.platform === "win32" ? "pi.cmd" : "pi");
@@ -155,7 +156,9 @@ export function toWireEvent(event) {
             type,
             deltaKind: "text_delta",
             contentIndex: contentIndexOf(inner.contentIndex),
-            delta: clip(typeof inner.delta === "string" ? inner.delta : "", 2000),
+            // Forward deltas verbatim: clipping or scrubbing here would corrupt the transcript and
+            // diverge from the history view, which renders the same stored text unmodified.
+            delta: typeof inner.delta === "string" ? inner.delta : "",
         };
     }
     if (type === "tool_execution_start" || type === "tool_execution_update" || type === "tool_execution_end") {

@@ -425,13 +425,13 @@ export async function modelAfterApiKeySave(providerId) {
     return resolveDeepSeekFlashModel();
 }
 
-export async function rememberSelectedModel(providerId, modelId) {
+export async function rememberSelectedModel(providerId, modelId, cwd = process.cwd()) {
     const id = requireProviderId(providerId);
     if (typeof modelId !== "string" || !/^[A-Za-z0-9_.:/-]+$/.test(modelId)) {
         return { ok: false, message: "未知模型" };
     }
     const SettingsManager = await settingsManager();
-    const settings = SettingsManager.create(process.cwd());
+    const settings = SettingsManager.create(cwd);
     settings.setDefaultModelAndProvider(id, modelId);
     await settings.flush();
     const registry = await modelRegistry();
@@ -452,7 +452,8 @@ export async function rememberSelectedModel(providerId, modelId) {
 export async function afterApiKeySaved(providerId, session) {
     const target = await modelAfterApiKeySave(providerId);
     if (!target) return null;
-    const saved = await rememberSelectedModel(target.providerId, target.modelId);
+    const cwd = session?.snapshot?.().cwd || process.cwd();
+    const saved = await rememberSelectedModel(target.providerId, target.modelId, cwd);
     if (!saved.ok) return { ok: false, message: saved.message, live: null };
     let live = { ok: false, code: "disconnected", message: "引擎未连接" };
     if (session && typeof session.setModel === "function") {
@@ -474,9 +475,9 @@ export async function afterApiKeySaved(providerId, session) {
     };
 }
 
-export async function getSelectedModel() {
+export async function getSelectedModel(cwd = process.cwd()) {
     const SettingsManager = await settingsManager();
-    const settings = SettingsManager.create(process.cwd());
+    const settings = SettingsManager.create(cwd);
     const providerId = settings.getDefaultProvider() ?? null;
     const modelId = settings.getDefaultModel() ?? null;
     if (!providerId || !modelId) return { providerId: null, modelId: null, name: null };
@@ -514,9 +515,9 @@ function clampThinkingLevel(levels, level) {
 }
 
 /** Context window and thinking levels of the selected model, from ModelRegistry and pi settings. */
-export async function getModelSettings() {
+export async function getModelSettings(cwd = process.cwd()) {
     const SettingsManager = await settingsManager();
-    const settings = SettingsManager.create(process.cwd());
+    const settings = SettingsManager.create(cwd);
     const providerId = settings.getDefaultProvider() ?? null;
     const modelId = settings.getDefaultModel() ?? null;
     if (!providerId || !modelId) {
@@ -539,10 +540,10 @@ export async function getModelSettings() {
     };
 }
 
-export async function saveThinkingLevel(level) {
+export async function saveThinkingLevel(level, cwd = process.cwd()) {
     if (!THINKING_LEVELS.includes(level)) return { ok: false, message: "未知的思考档位" };
     const SettingsManager = await settingsManager();
-    const settings = SettingsManager.create(process.cwd());
+    const settings = SettingsManager.create(cwd);
     const providerId = settings.getDefaultProvider();
     const modelId = settings.getDefaultModel();
     if (providerId && modelId) settings.setModelThinkingLevel(providerId, modelId, level);
@@ -551,7 +552,7 @@ export async function saveThinkingLevel(level) {
     return { ok: true };
 }
 
-export async function setSelectedModel(providerId, modelId) {
+export async function setSelectedModel(providerId, modelId, cwd = process.cwd()) {
     const id = requireProviderId(providerId);
     if (typeof modelId !== "string" || !/^[A-Za-z0-9_.:/-]+$/.test(modelId)) {
         return { ok: false, message: "未知模型" };
@@ -560,7 +561,7 @@ export async function setSelectedModel(providerId, modelId) {
     const model = registry.find(id, modelId);
     if (!model) return { ok: false, message: "未知模型" };
     const SettingsManager = await settingsManager();
-    const settings = SettingsManager.create(process.cwd());
+    const settings = SettingsManager.create(cwd);
     settings.setDefaultModelAndProvider(id, model.id);
     await settings.flush();
     return {

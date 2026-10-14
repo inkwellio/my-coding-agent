@@ -156,6 +156,8 @@ try {
     assert.equal(isolatedTerminal.ok, false);
     assert.match(isolatedTerminal.message, /isolation blocked/);
     assert.match(starts.at(-1).args[0], /sandbox-terminal\.mjs$/);
+    assert.equal(starts.at(-1).program, process.execPath, "the sandbox wrapper must not depend on node in PATH");
+    assert.equal(starts.at(-1).settings.env.ELECTRON_RUN_AS_NODE, "1");
     assert.equal(starts.length, 2, "terminal startup failure must not fall back to a host shell");
     const cancelledTerminal = terminal.start(11, cwd);
     await terminal.stop(11);

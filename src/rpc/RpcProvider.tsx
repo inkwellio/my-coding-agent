@@ -57,6 +57,7 @@ export function RpcProvider({ children }: { children: ReactNode }) {
     const cwdRef = useRef("");
     const workspaceEpoch = useRef(0);
     const workspaceAction = useRef(false);
+    const promptCounter = useRef(0);
 
     const refreshSessions = useCallback(async () => {
         const desktop = window.piDesktop;
@@ -212,8 +213,21 @@ export function RpcProvider({ children }: { children: ReactNode }) {
             setNotice("模型凭据未配置。密钥只留在主进程 AuthStorage，请打开凭据页。");
             return false;
         }
-        const result: PromptResult = await desktop.sendPrompt(trimmed);
+        // Show the user bubble before the request: the engine can stream the reply before the ack.
+        promptCounter.current += 1;
+        const blockId = `prompt-${promptCounter.current}`;
+        const withdraw = () => setBlocks((current) => current.filter((block) => block.id !== blockId));
+        setBlocks((current) => appendUserBlock(current, trimmed, blockId));
+        let result: PromptResult;
+        try {
+            result = await desktop.sendPrompt(trimmed);
+        } catch (error) {
+            withdraw();
+            setNotice(error instanceof Error ? error.message : "发送失败");
+            return false;
+        }
         if (!result.ok) {
+            withdraw();
             if (result.code === "credentials") {
                 setNotice(result.message ? `模型凭据不可用：${result.message}` : "模型凭据未配置。请打开凭据页。");
                 return false;
@@ -222,7 +236,6 @@ export function RpcProvider({ children }: { children: ReactNode }) {
             return false;
         }
         setNotice(null);
-        setBlocks((current) => appendUserBlock(current, trimmed));
         return true;
     }, [status.credentials.configured, sessionBusy, workspaceBusy]);
 

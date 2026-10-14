@@ -30,6 +30,7 @@ export function DiffPage() {
     const [success, setSuccess] = useState("");
     const requestId = useRef(0);
     const stagingRef = useRef(false);
+    const [staging, setStaging] = useState(false);
     const cwdRef = useRef(engine.cwd);
     cwdRef.current = engine.cwd;
 
@@ -95,6 +96,7 @@ export function DiffPage() {
         const desktop = window.piDesktop;
         if (!desktop || stagingRef.current) return;
         stagingRef.current = true;
+        setStaging(true);
         requestId.current += 1;
         const cwd = cwdRef.current;
         setLoading(false);
@@ -114,6 +116,7 @@ export function DiffPage() {
             setError(cause instanceof Error ? cause.message : "暂存失败");
         } finally {
             stagingRef.current = false;
+            setStaging(false);
         }
     };
 
@@ -194,7 +197,7 @@ export function DiffPage() {
                             key={file.path}
                             file={file}
                             selected={selectedPath === file.path}
-                            stageBusy={stagingRef.current}
+                            stageBusy={staging}
                             onSelect={setSelectedPath}
                             onToggleStage={(path, staged) => void stage(path, staged)}
                             onStageLatest={(path) => void stage(path, true)}
