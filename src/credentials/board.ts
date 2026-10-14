@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
-import type { CredentialBroadcast, EnvHit, OAuthEvent, ProviderInfo, ProviderStatus, SelectedModel, SetModelResult } from "./types";
+import type { CredentialBroadcast, ProviderInfo, ProviderStatus, SelectedModel, SetModelResult } from "./types";
 
 export interface CredentialBoard {
     available: boolean;
@@ -8,7 +8,6 @@ export interface CredentialBoard {
     providers: ProviderInfo[];
     statuses: Record<string, ProviderStatus>;
     selected: SelectedModel;
-    oauth: Record<string, OAuthEvent>;
     modelNote: string | null;
 }
 
@@ -21,7 +20,6 @@ let board: CredentialBoard = {
     providers: [],
     statuses: {},
     selected: emptySelected,
-    oauth: {},
     modelNote: null,
 };
 
@@ -47,13 +45,10 @@ function indexStatuses(rows: ProviderStatus[]) {
 function subscribeDesktop() {
     if (listening) return;
     const desktop = window.piDesktop;
-    if (!desktop?.onCredentialStatus || !desktop.onOAuthEvent || !desktop.onSelectedModel) return;
+    if (!desktop?.onCredentialStatus || !desktop.onSelectedModel) return;
     listening = true;
     desktop.onCredentialStatus((payload: CredentialBroadcast) => {
         update({ statuses: indexStatuses(payload.providers) });
-    });
-    desktop.onOAuthEvent((event: OAuthEvent) => {
-        update({ oauth: { ...board.oauth, [event.providerId]: event } });
     });
     desktop.onSelectedModel((model: SetModelResult) => {
         update({
@@ -135,37 +130,8 @@ export async function clearProviderKey(providerId: string) {
     const desktop = window.piDesktop;
     if (!desktop?.clearCredential) throw new Error("凭据只在 Electron 窗口里清除");
     const result = await desktop.clearCredential(providerId);
-    const oauth = { ...board.oauth };
-    delete oauth[providerId];
-    update({ statuses: { ...board.statuses, [providerId]: result }, oauth });
-    return result;
-}
-
-export async function beginOAuth(providerId: string) {
-    const desktop = window.piDesktop;
-    if (!desktop?.startOAuth) throw new Error("OAuth 只在 Electron 窗口里发起");
-    const result = await desktop.startOAuth(providerId);
-    if (result.status !== "error") {
-        update({ statuses: { ...board.statuses, [providerId]: result } });
-    }
-    return result;
-}
-
-export async function endOAuth(providerId: string) {
-    const desktop = window.piDesktop;
-    if (!desktop?.logoutOAuth) throw new Error("OAuth 只在 Electron 窗口里退出");
-    const result = await desktop.logoutOAuth(providerId);
     update({ statuses: { ...board.statuses, [providerId]: result } });
-    const oauth = { ...board.oauth };
-    delete oauth[providerId];
-    update({ oauth });
     return result;
-}
-
-export async function refreshEnv(providerId?: string): Promise<EnvHit[]> {
-    const desktop = window.piDesktop;
-    if (!desktop?.detectEnv) throw new Error("环境变量检测只在 Electron 窗口里运行");
-    return desktop.detectEnv(providerId);
 }
 
 export async function chooseModel(providerId: string, modelId: string): Promise<SetModelResult> {

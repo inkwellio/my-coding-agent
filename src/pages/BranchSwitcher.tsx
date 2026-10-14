@@ -1,31 +1,46 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Icon } from "../components/Icon";
+import { notifyHeadChanged, relativeTime } from "../git/format";
+import type { GitBranches, GitCheckoutRequest } from "../git/types";
+import { useRpc } from "../rpc/RpcProvider";
 
-const rows = [
-    { id: "current", name: "main", section: "当前分支 CURRENT" },
-    { id: "auth", name: "feat/auth-race", section: "本地分支 LOCAL BRANCHES" },
-    { id: "sse", name: "fix/sse-parser", section: "本地分支 LOCAL BRANCHES" },
-    { id: "deps", name: "chore/deps", section: "本地分支 LOCAL BRANCHES" },
-    { id: "origin-main", name: "origin/main", section: "远程分支 REMOTE BRANCHES" },
-    { id: "origin-auth", name: "origin/feat/auth-race", section: "远程分支 REMOTE BRANCHES" },
-];
+function trackLabel(ahead: number, behind: number) {
+    if (!ahead && !behind) return null;
+    return [ahead ? `↑${ahead}` : "", behind ? `↓${behind}` : ""].filter(Boolean).join(" ");
+}
 
-export function BranchSwitcher({
-    dirty,
-    onDirtyChange,
-    onClose,
-}: {
-    dirty: boolean;
-    onDirtyChange: (dirty: boolean) => void;
-    onClose: () => void;
-}) {
+export function BranchSwitcher({ onClose }: { onClose: () => void }) {
+    const { status: engine } = useRpc();
+    const desktop = window.piDesktop;
+    const [data, setData] = useState<GitBranches | null>(null);
     const [query, setQuery] = useState("");
-    const [notice, setNotice] = useState<string | null>(null);
-    const needle = query.trim().toLowerCase();
-    const visible = useMemo(
-        () => rows.filter((row) => !needle || row.name.toLowerCase().includes(needle) || row.section.toLowerCase().includes(needle)),
-        [needle],
-    );
+    const [busy, setBusy] = useState<"load" | "fetch" | "checkout" | null>("load");
+    const [error, setError] = useState("");
+    const [notice, setNotice] = useState("");
+    const [pending, setPending] = useState<GitCheckoutRequest | null>(null);
+    const agentRunning = engine.engine === "chatting";
+
+    const load = useCallback(async () => {
+        if (!desktop?.listGitBranches) {
+            setBusy(null);
+            setError("请在 Electron 桌面应用中打开工作区");
+            return;
+        }
+        setBusy("load");
+        try {
+            const result = await desktop.listGitBranches();
+            setData(result);
+            setError(result.ok ? "" : result.message || "读取分支失败");
+        } catch (cause) {
+            setError(cause instanceof Error ? cause.message : "读取分支失败");
+        } finally {
+            setBusy(null);
+        }
+    }, [desktop]);
+
+    useEffect(() => {
+        void load();
+    }, [load, engine.cwd]);
 
     useEffect(() => {
         const onKey = (event: KeyboardEvent) => {
@@ -35,9 +50,77 @@ export function BranchSwitcher({
         return () => window.removeEventListener("keydown", onKey);
     }, [onClose]);
 
-    function shown(id: string) {
-        return visible.some((row) => row.id === id);
+    const needle = query.trim().toLowerCase();
+    const local = useMemo(
+        () => (data?.local ?? []).filter((branch) => !branch.current && (!needle || branch.name.toLowerCase().includes(needle))),
+        [data, needle],
+    );
+    const remote = useMemo(
+        () => (data?.remote ?? []).filter((branch) => !needle || branch.name.toLowerCase().includes(needle)),
+        [data, needle],
+    );
+    const newName = query.trim();
+    const canCreate = Boolean(data?.ok && newName && !data.local.some((branch) => branch.name === newName));
+
+    async function checkout(request: GitCheckoutRequest) {
+        if (!desktop?.checkoutGitBranch || busy) return;
+        setBusy("checkout");
+        setError("");
+        setNotice("");
+        try {
+            const result = await desktop.checkoutGitBranch(request);
+            if (!result.ok) {
+                setError(result.message || "切换分支失败");
+                if (data && data.changes > 0) setPending({ ...request, stash: false });
+                return;
+            }
+            setPending(null);
+            notifyHeadChanged();
+            if (result.stashed) {
+                setData(result as GitBranches);
+                setQuery("");
+                setNotice(`已切换到 ${result.branch}。原来的改动已存入 stash，可在终端用 git stash pop 恢复。`);
+            } else {
+                onClose();
+            }
+        } catch (cause) {
+            setError(cause instanceof Error ? cause.message : "切换分支失败");
+        } finally {
+            setBusy(null);
+        }
     }
+
+    function choose(request: GitCheckoutRequest) {
+        if (data && data.changes > 0) {
+            setError("");
+            setPending(request);
+            return;
+        }
+        void checkout(request);
+    }
+
+    async function fetchRemotes() {
+        if (!desktop?.fetchGitRemotes || busy) return;
+        setBusy("fetch");
+        setError("");
+        setNotice("");
+        try {
+            const result = await desktop.fetchGitRemotes();
+            if (result.ok) {
+                setData(result);
+                setNotice("已从远程仓库拉取最新分支");
+            } else {
+                setError(result.message || "拉取远程分支失败");
+            }
+        } catch (cause) {
+            setError(cause instanceof Error ? cause.message : "拉取远程分支失败");
+        } finally {
+            setBusy(null);
+        }
+    }
+
+    const disabled = busy !== null || agentRunning || !data?.ok;
+    const current = data?.local.find((branch) => branch.current);
 
     return (
         <div className="fixed bottom-8 left-64 z-[60] w-[380px] max-w-[calc(100vw-18rem)] overflow-hidden rounded-xl bg-surface-container-low shadow-2xl">
@@ -69,151 +152,168 @@ export function BranchSwitcher({
                         autoFocus
                         value={query}
                         onChange={(event) => setQuery(event.target.value)}
+                        onKeyDown={(event) => {
+                            if (event.key !== "Enter" || event.nativeEvent.isComposing || disabled) return;
+                            event.preventDefault();
+                            if (local[0]) choose({ name: local[0].name });
+                            else if (canCreate) choose({ name: newName, create: true });
+                            else if (remote[0]) choose({ name: remote[0].name, remote: true });
+                        }}
                         placeholder="搜索分支或输入新分支名…"
                         className="w-full bg-transparent font-body-sm text-body-sm text-on-surface outline-none placeholder:text-outline/70"
                     />
-                    <span className="select-none font-code-sm text-[11px] text-outline">⌘K</span>
                 </label>
             </div>
             <div className="flex max-h-72 flex-col gap-1 overflow-y-auto px-space-xs py-1.5">
-                {shown("current") ? (
+                {busy === "load" && !data ? <p className="px-2 py-1.5 font-body-sm text-body-sm text-outline">正在读取分支…</p> : null}
+                {data?.ok ? (
                     <>
                         <div className="px-2 pb-0.5 pt-1 font-label-xs font-semibold uppercase tracking-wider text-outline">当前分支 CURRENT</div>
                         <div className="mx-1 flex cursor-default items-center justify-between rounded-lg bg-primary/10 px-2 py-1.5 text-on-surface">
                             <div className="flex min-w-0 items-center gap-2">
                                 <Icon name="radio_button_checked" className="text-[16px] text-primary" />
-                                <span className="truncate font-code-sm text-body-sm font-semibold text-primary">main</span>
+                                <span className="truncate font-code-sm text-body-sm font-semibold text-primary">
+                                    {data.detached ? `分离 HEAD · ${data.current}` : data.current}
+                                </span>
                                 <span className="rounded bg-primary/20 px-1 py-0.5 font-code-sm text-[10px] text-primary">HEAD</span>
+                                {current && trackLabel(current.ahead, current.behind) ? (
+                                    <span className="rounded bg-surface-container px-1.5 py-0.5 font-code-sm text-[10px] text-secondary" title="相对上游分支领先/落后的提交数">
+                                        {trackLabel(current.ahead, current.behind)}
+                                    </span>
+                                ) : null}
                             </div>
                             <Icon name="check" className="text-[18px] text-primary" />
                         </div>
                     </>
                 ) : null}
-                {shown("auth") || shown("sse") || shown("deps") ? (
+                {canCreate ? (
+                    <button
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => choose({ name: newName, create: true })}
+                        className="mx-1 mt-1 flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-on-surface transition-colors hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        <Icon name="add" className="text-[16px] text-primary" />
+                        <span className="min-w-0 truncate font-body-sm text-body-sm">
+                            从当前分支新建 <span className="font-code-sm text-primary">{newName}</span> 并切换
+                        </span>
+                    </button>
+                ) : null}
+                {local.length ? (
                     <div className="px-2 pb-0.5 pt-2.5 font-label-xs font-semibold uppercase tracking-wider text-outline">本地分支 LOCAL BRANCHES</div>
                 ) : null}
-                {shown("auth") ? (
-                    <button type="button" onClick={() => setNotice("演示不会真正切换到 feat/auth-race。")} className="mx-1 flex items-center justify-between rounded-lg px-2 py-1.5 text-on-surface transition-colors hover:bg-surface-container-high">
-                        <span className="flex min-w-0 items-center gap-2">
-                            <Icon name="call_split" className="text-[16px] text-outline" />
-                            <span className="truncate font-code-sm text-body-sm">feat/auth-race</span>
-                        </span>
-                        <span className="flex items-center gap-2">
-                            <span className="rounded bg-surface-container px-1.5 py-0.5 font-code-sm text-[10px] text-secondary" title="领先 1 个提交，落后 0 个">↑1 ↓0</span>
-                            <span className="font-label-xs text-outline">3小时前</span>
-                        </span>
-                    </button>
-                ) : null}
-                {shown("sse") ? (
-                    <button type="button" onClick={() => setNotice("演示不会真正切换到 fix/sse-parser。")} className="mx-1 flex items-center justify-between rounded-lg bg-surface-container-high px-2 py-1.5 text-on-surface shadow-sm">
-                        <span className="flex min-w-0 items-center gap-2">
-                            <Icon name="call_split" className="text-[16px] text-primary" />
-                            <span className="truncate font-code-sm text-body-sm font-medium">fix/sse-parser</span>
-                            <span className="rounded bg-tertiary-container/30 px-1 py-0.5 font-code-sm text-[10px] text-tertiary">匹配</span>
-                        </span>
-                        <span className="flex items-center gap-2">
-                            <span className="rounded bg-surface-container px-1.5 py-0.5 font-code-sm text-[10px] text-tertiary">↑2</span>
-                            <span className="font-label-xs font-medium text-tertiary">刚刚</span>
-                        </span>
-                    </button>
-                ) : null}
-                {shown("deps") ? (
-                    <button type="button" onClick={() => setNotice("演示不会真正切换到 chore/deps。")} className="mx-1 flex items-center justify-between rounded-lg px-2 py-1.5 text-on-surface transition-colors hover:bg-surface-container-high">
-                        <span className="flex min-w-0 items-center gap-2">
-                            <Icon name="call_split" className="text-[16px] text-outline" />
-                            <span className="truncate font-code-sm text-body-sm text-on-surface-variant">chore/deps</span>
-                        </span>
-                        <span className="font-label-xs text-outline">昨天</span>
-                    </button>
-                ) : null}
-                {shown("origin-main") || shown("origin-auth") ? (
+                {local.map((branch) => {
+                    const track = trackLabel(branch.ahead, branch.behind);
+                    return (
+                        <button
+                            key={branch.name}
+                            type="button"
+                            disabled={disabled}
+                            onClick={() => choose({ name: branch.name })}
+                            className={`mx-1 flex items-center justify-between rounded-lg px-2 py-1.5 text-on-surface transition-colors hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-50 ${pending?.name === branch.name ? "bg-surface-container-high" : ""}`}
+                        >
+                            <span className="flex min-w-0 items-center gap-2">
+                                <Icon name="call_split" className="text-[16px] text-outline" />
+                                <span className="truncate font-code-sm text-body-sm">{branch.name}</span>
+                                {branch.gone ? <span className="rounded bg-error-container/30 px-1 py-0.5 font-code-sm text-[10px] text-error" title="上游分支已被删除">上游已删除</span> : null}
+                            </span>
+                            <span className="flex shrink-0 items-center gap-2">
+                                {track ? <span className="rounded bg-surface-container px-1.5 py-0.5 font-code-sm text-[10px] text-secondary" title="相对上游分支领先/落后的提交数">{track}</span> : null}
+                                <span className="font-label-xs text-outline">{relativeTime(branch.date)}</span>
+                            </span>
+                        </button>
+                    );
+                })}
+                {remote.length ? (
                     <div className="px-2 pb-0.5 pt-2.5 font-label-xs font-semibold uppercase tracking-wider text-outline">远程分支 REMOTE BRANCHES</div>
                 ) : null}
-                {shown("origin-main") ? (
-                    <button type="button" className="group mx-1 rounded-lg px-2 py-1.5 text-outline transition-colors hover:bg-surface-container-high">
+                {remote.map((branch) => (
+                    <button
+                        key={branch.name}
+                        type="button"
+                        disabled={disabled}
+                        title="检出为本地跟踪分支"
+                        onClick={() => choose({ name: branch.name, remote: true })}
+                        className={`group mx-1 rounded-lg px-2 py-1.5 text-outline transition-colors hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-50 ${pending?.name === branch.name ? "bg-surface-container-high" : ""}`}
+                    >
                         <span className="flex items-center justify-between">
                             <span className="flex min-w-0 items-center gap-2">
                                 <Icon name="cloud" className="text-[16px]" />
-                                <span className="truncate font-code-sm text-body-sm group-hover:text-on-surface-variant">origin/main</span>
+                                <span className="truncate font-code-sm text-body-sm group-hover:text-on-surface-variant">{branch.name}</span>
                             </span>
-                            <span className="text-[11px] opacity-70">同步</span>
+                            <span className="shrink-0 text-[11px] opacity-70">{relativeTime(branch.date)}</span>
                         </span>
                     </button>
-                ) : null}
-                {shown("origin-auth") ? (
-                    <button type="button" className="group mx-1 rounded-lg px-2 py-1.5 text-outline transition-colors hover:bg-surface-container-high">
-                        <span className="flex items-center justify-between">
-                            <span className="flex min-w-0 items-center gap-2">
-                                <Icon name="cloud" className="text-[16px]" />
-                                <span className="truncate font-code-sm text-body-sm group-hover:text-on-surface-variant">origin/feat/auth-race</span>
-                            </span>
-                            <span className="text-[11px] opacity-70">2天前</span>
-                        </span>
-                    </button>
+                ))}
+                {data?.ok && needle && !local.length && !remote.length && !canCreate ? (
+                    <p className="px-2 py-1.5 font-body-sm text-body-sm text-outline">没有匹配的分支</p>
                 ) : null}
             </div>
-            {dirty ? (
+            {pending && data ? (
                 <div className="mx-space-xs my-1.5 flex flex-col gap-2 rounded-xl bg-error-container/20 p-2.5">
                     <div className="flex items-start gap-2">
                         <Icon name="warning" className="mt-0.5 shrink-0 text-[18px] text-error" />
                         <div className="flex min-w-0 flex-col">
                             <span className="font-label-md text-label-md font-semibold tracking-tight text-error">
-                                检测到 3 个未提交更改 (Dirty Worktree)
+                                有 {data.changes} 个未提交的更改
                             </span>
                             <span className="mt-0.5 font-body-sm text-xs leading-snug text-on-surface-variant">
-                                直接切换分支可能会导致工作区未暂存代码冲突。
+                                切换到 <span className="font-code-sm">{pending.name}</span> 时，不冲突的改动会被带过去；有冲突时 Git 会拒绝切换。也可以先把改动存入 stash。
                             </span>
                         </div>
                     </div>
                     <div className="flex items-center gap-2 pt-1">
                         <button
                             type="button"
-                            title="强制丢弃或覆写"
-                            onClick={() => setNotice("已选择仍要切换（演示）。状态栏分支仍显示 main*。")}
-                            className="flex h-6 items-center rounded bg-surface-container-highest px-2.5 font-label-xs font-semibold text-error transition-colors hover:bg-surface-container"
+                            disabled={busy !== null}
+                            onClick={() => void checkout({ ...pending, stash: false })}
+                            className="flex h-6 items-center rounded bg-surface-container-highest px-2.5 font-label-xs font-semibold text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50"
                         >
-                            仍要切换 (Force)
+                            带着改动切换
                         </button>
                         <button
                             type="button"
-                            onClick={onClose}
+                            onClick={() => {
+                                setPending(null);
+                                setError("");
+                            }}
                             className="h-6 rounded bg-surface-container px-2.5 font-label-xs text-on-surface-variant transition-colors hover:bg-surface-container-high"
                         >
                             取消
                         </button>
                         <button
                             type="button"
-                            onClick={() => {
-                                onDirtyChange(false);
-                                setNotice("已暂存后再切（演示）。脏工作区提示已收起。");
-                            }}
-                            className="ml-auto flex items-center gap-0.5 font-code-sm text-xs text-secondary hover:underline"
+                            disabled={busy !== null}
+                            onClick={() => void checkout({ ...pending, stash: true })}
+                            className="ml-auto flex items-center gap-0.5 font-code-sm text-xs text-secondary hover:underline disabled:opacity-50"
                         >
-                            暂存后再切 (Stash)
+                            存入 stash 后切换
                             <Icon name="arrow_forward" className="text-[13px]" />
                         </button>
                     </div>
                 </div>
             ) : null}
-            {notice ? <p className="px-space-md pb-2 font-code-sm text-[11px] text-secondary">{notice}</p> : null}
+            {agentRunning ? <p className="px-space-md pb-2 font-code-sm text-[11px] text-on-surface-variant">代理正在运行，完成或中止后才能切换分支。</p> : null}
+            {busy === "checkout" ? <p className="px-space-md pb-2 font-code-sm text-[11px] text-secondary">正在切换…</p> : null}
+            {error ? <p role="alert" className="whitespace-pre-wrap px-space-md pb-2 font-code-sm text-[11px] text-error">{error}</p> : null}
+            {notice ? <p role="status" className="px-space-md pb-2 font-code-sm text-[11px] text-secondary">{notice}</p> : null}
             <div className="flex items-center justify-between border-t border-surface-container-high/40 bg-surface-container-lowest px-space-md py-2 text-on-surface-variant">
-                <button
-                    type="button"
-                    onClick={() => setNotice(query.trim() ? `将创建分支 ${query.trim()}（演示）` : "输入新分支名后再创建")}
+                <a
+                    href="#/history"
                     className="flex h-7 items-center gap-1.5 rounded px-2.5 font-label-sm text-label-sm font-medium text-on-surface transition-colors hover:bg-surface-container"
                 >
-                    <Icon name="add" className="text-[15px] text-primary" />
-                    <span>新建分支…</span>
-                    <span className="ml-1 font-code-sm text-[10px] text-outline">⌘N</span>
-                </button>
+                    <Icon name="history" className="text-[15px] text-primary" />
+                    <span>提交历史</span>
+                </a>
                 <button
                     type="button"
-                    title="Fetch Remote Refs"
-                    onClick={() => onDirtyChange(!dirty)}
-                    className="flex h-7 items-center gap-1.5 rounded px-2.5 font-label-sm text-label-sm text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface"
+                    title="git fetch --all --prune"
+                    disabled={busy !== null || !data?.ok}
+                    onClick={() => void fetchRemotes()}
+                    className="flex h-7 items-center gap-1.5 rounded px-2.5 font-label-sm text-label-sm text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface disabled:opacity-50"
                 >
-                    <Icon name="sync" className="text-[15px]" />
-                    <span>刷新 (Fetch)</span>
+                    <Icon name="sync" className={`text-[15px] ${busy === "fetch" ? "animate-spin" : ""}`} />
+                    <span>{busy === "fetch" ? "正在拉取…" : "拉取远程 (Fetch)"}</span>
                 </button>
             </div>
         </div>

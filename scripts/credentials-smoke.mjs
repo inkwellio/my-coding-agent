@@ -115,9 +115,6 @@ try {
     assert.equal(readFileSync(join(dir, "auth.json"), "utf8").includes(secret), false);
 
     process.env.DEEPSEEK_API_KEY = envSecret;
-    const detected = await credentials.detectEnv("deepseek");
-    assert.deepEqual(detected, [{ providerId: "deepseek", envVars: ["DEEPSEEK_API_KEY"] }]);
-    assert.equal(JSON.stringify(detected).includes(envSecret), false);
     const afterEnv = (await credentials.getStatus()).find((row) => row.providerId === "deepseek");
     assert.equal(afterEnv?.status, "environment");
     assert.equal(afterEnv?.source, "environment");

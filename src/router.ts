@@ -7,8 +7,7 @@ export type Route =
     | "onboarding"
     | "credentials"
     | "branch"
-    | "status"
-    | "engine";
+    | "history";
 
 export function readLocationQuery(
     hash = window.location.hash,
@@ -30,10 +29,8 @@ export function readRoute(hash = window.location.hash): Route {
             return "credentials";
         case "branch":
             return "branch";
-        case "status":
-            return "status";
-        case "engine":
-            return "engine";
+        case "history":
+            return "history";
         default:
             return "workspace";
     }

@@ -121,9 +121,10 @@ export function Sidebar({ route, width }: { route: Route; width: number }) {
                     href="#/settings"
                     aria-current={route === "settings" || route === "credentials" ? "page" : undefined}
                     className={route === "settings" || route === "credentials"
-                        ? "flex items-center rounded bg-surface-container-high px-space-sm py-1.5 font-medium text-on-surface"
-                        : "flex items-center rounded px-space-sm py-1.5 font-body-sm text-body-sm text-on-surface-variant hover:bg-surface-container"}
+                        ? "flex items-center gap-2 rounded bg-surface-container-high px-space-sm py-1.5 font-medium text-on-surface"
+                        : "flex items-center gap-2 rounded px-space-sm py-1.5 font-body-sm text-body-sm text-on-surface-variant hover:bg-surface-container"}
                 >
+                    <Icon name="settings" className="text-[17px]" />
                     设置
                 </a>
             </nav>

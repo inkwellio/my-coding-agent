@@ -75,33 +75,13 @@ export function SettingsPage({ sandboxController }: { sandboxController: Sandbox
                     <Icon name="tune" className="text-[18px]" />
                 </div>
                 <div className="flex flex-col">
-                    <div className="flex items-center gap-2">
-                        <h1 className="font-headline-sm text-headline-sm font-semibold text-on-surface tracking-tight">
-                            工作区偏好设置
-                        </h1>
-                        <span className="font-code-sm text-code-sm px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant">
-                            Workspace Context: Local Host
-                        </span>
-                    </div>
+                    <h1 className="font-headline-sm text-headline-sm font-semibold text-on-surface tracking-tight">
+                        工作区偏好设置
+                    </h1>
                     <span className="font-body-sm text-body-sm text-on-surface-variant">
                         控制 IDE 外观视效、模型推理链路及自主执行安全沙箱策略
                     </span>
                 </div>
-            </div>
-            <div className="flex items-center gap-space-sm">
-                <span className="font-code-sm text-code-sm text-outline flex items-center gap-1.5 px-space-sm py-1 rounded bg-surface-container-low">
-                    <span className="w-1.5 h-1.5 rounded-full bg-tertiary animate-pulse">
-                    </span>
-                    <span>
-                        Config Hash: #d4a991f
-                    </span>
-                </span>
-                <button className="h-8 px-space-md rounded bg-surface-container hover:bg-surface-container-high text-on-surface font-label-sm text-label-sm flex items-center gap-1.5 transition-colors" type="button">
-                    <Icon name="file_download" className="text-[15px]" />
-                    <span>
-                        导出 JSON
-                    </span>
-                </button>
             </div>
         </header>
         <div className="relative flex min-h-0 flex-1 overflow-hidden">
@@ -177,23 +157,6 @@ export function SettingsPage({ sandboxController }: { sandboxController: Sandbox
                             </span>
                         )}
                     </button>
-                </div>
-                <div className="mt-space-lg p-space-md rounded-xl bg-surface-container-low flex flex-col gap-2">
-                    <div className="flex items-center justify-between text-on-surface-variant">
-                        <span className="font-label-xs text-label-xs uppercase font-semibold">
-                            沙箱负载度量
-                        </span>
-                        <span className="font-code-sm text-code-sm text-tertiary">
-                            99.8% Isolation
-                        </span>
-                    </div>
-                    <div className="w-full bg-surface-container-highest h-1.5 rounded-full overflow-hidden">
-                        <div className="bg-primary h-full rounded-full" style={{ width: "32%" }}>
-                        </div>
-                    </div>
-                    <span className="font-code-sm text-code-sm text-outline">
-                        Memory Cap: 4.0GB / 16.0GB
-                    </span>
                 </div>
             </nav>
             {/* Right Main Workspace — only this column scrolls */}
@@ -291,20 +254,11 @@ export function SettingsPage({ sandboxController }: { sandboxController: Sandbox
                 ) : null}
                 {activeDomain === "models" ? (
                 <section className="flex flex-col gap-space-md bg-surface-container-low p-space-xl rounded-xl shadow-sm">
-                    <div className="flex items-center justify-between pb-space-xs">
-                        <div className="flex items-center gap-space-sm">
-                            <Icon name="cognition" className="text-secondary text-[20px]" />
-                            <h2 className="font-headline-sm text-headline-sm font-semibold text-on-surface">
-                                模型与推理配置 Models &amp; Inference
-                            </h2>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-tertiary animate-pulse">
-                            </span>
-                            <span className="font-code-sm text-code-sm text-tertiary">
-                                Inference Gateway: Ready (24ms)
-                            </span>
-                        </div>
+                    <div className="flex items-center gap-space-sm pb-space-xs">
+                        <Icon name="cognition" className="text-secondary text-[20px]" />
+                        <h2 className="font-headline-sm text-headline-sm font-semibold text-on-surface">
+                            模型与推理配置 Models &amp; Inference
+                        </h2>
                     </div>
                     <div className="max-w-2xl">
                         {/* Main Model */}
@@ -312,7 +266,7 @@ export function SettingsPage({ sandboxController }: { sandboxController: Sandbox
                             <label className="font-label-sm text-label-sm text-on-surface-variant uppercase font-semibold">
                                 默认主模型 Primary Agent Model
                             </label>
-                            <ModelSelect variant="field" fallback="Sonnet-3.5" />
+                            <ModelSelect variant="field" />
                             <p className="font-code-sm text-code-sm text-outline">
                                 保存 DeepSeek API Key 后，主进程会调用 set_model，切到 DeepSeek V4 Flash。
                                 {flashModelId ? <span className="mt-0.5 block font-mono text-[10px] text-on-surface-variant">deepseek/{flashModelId}</span> : null}
@@ -394,37 +348,6 @@ export function SettingsPage({ sandboxController }: { sandboxController: Sandbox
                 </div>
             </div>
         </div>
-        <footer className="relative z-10 flex h-14 shrink-0 items-center justify-between border-t border-outline-variant/20 bg-surface-container-lowest/90 px-space-xl shadow-xl backdrop-blur">
-            <div className="flex items-center gap-space-md">
-                <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-tertiary">
-                    </span>
-                    <span className="font-label-sm text-label-sm font-semibold text-on-surface">
-                        已自动保存 (Auto-saved)
-                    </span>
-                </div>
-                <span className="text-outline font-code-sm text-code-sm">
-                    |
-                </span>
-                <span className="font-code-sm text-code-sm text-on-surface-variant">
-                    变更已实时热重载至 active runtime
-                </span>
-            </div>
-            <div className="flex items-center gap-space-sm">
-                <button className="h-8 px-space-md rounded bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface font-label-sm text-label-sm flex items-center gap-1.5 transition-colors" type="button">
-                    <Icon name="restart_alt" className="text-[15px]" />
-                    <span>
-                        重置为默认值 (Restore Defaults)
-                    </span>
-                </button>
-                <button className="h-8 px-space-lg rounded bg-primary text-on-primary hover:bg-primary-container hover:text-on-primary-container font-label-sm text-label-sm font-semibold flex items-center gap-1.5 shadow-sm transition-colors" type="button">
-                    <Icon name="check" className="text-[15px]" />
-                    <span>
-                        同步到远程团队策略
-                    </span>
-                </button>
-            </div>
-        </footer>
     </div>
     );
 }

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useGitSummary } from "../git/useGitSummary";
 import { useRpc } from "../rpc/RpcProvider";
 import { CredentialsPage } from "./CredentialsPage";
 
@@ -37,6 +38,7 @@ export function CredentialsFrame() {
     const { status, workspaceState, addWorkspace, switchWorkspace, workspaceBusy } = useRpc();
     const cwd = status.available ? status.cwd : "";
     const paths = workspaceState.paths.length ? workspaceState.paths : cwd ? [cwd] : [];
+    const git = useGitSummary(status.cwd);
     return (
         <div className="flex h-screen flex-col overflow-hidden bg-pi-bg font-sans text-xs text-pi-text antialiased selection:bg-pi-accent selection:text-white">
             <header className="flex h-10 shrink-0 select-none items-center justify-between border-b border-pi-border bg-pi-surface pl-3">
@@ -45,15 +47,16 @@ export function CredentialsFrame() {
                         <span>打开文件夹</span>
                     </button>
                     <a href="#/diff" className="flex items-center gap-1.5 rounded border border-pi-border bg-pi-card px-2.5 py-1 text-pi-muted transition-colors hover:bg-pi-cardHover hover:text-pi-text">
-                        <span className="text-emerald-400">✓</span>
-                        <span>提交更改</span>
+                        <span>提交更改{git.changes === null ? "" : ` (${git.changes})`}</span>
                     </a>
-                    <a href="#/branch" className="inline-flex items-center gap-1 rounded border border-pi-border bg-pi-card px-1.5 py-0.5 font-mono text-[10px] text-pi-muted">
-                        <svg className="h-3 w-3 text-pi-accent" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
-                            <path fillRule="evenodd" d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6a1 1 0 00-1 1v1.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v1.836A2.492 2.492 0 016 7h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zM3.5 3.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0z" />
-                        </svg>
-                        <span>main</span>
-                    </a>
+                    {git.branch ? (
+                        <a href="#/branch" className="inline-flex items-center gap-1 rounded border border-pi-border bg-pi-card px-1.5 py-0.5 font-mono text-[10px] text-pi-muted">
+                            <svg className="h-3 w-3 text-pi-accent" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                                <path fillRule="evenodd" d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6a1 1 0 00-1 1v1.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v1.836A2.492 2.492 0 016 7h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zM3.5 3.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0z" />
+                            </svg>
+                            <span>{git.branch === "HEAD" ? "分离 HEAD" : git.branch}</span>
+                        </a>
+                    ) : null}
                 </div>
                 <div className="ml-2 flex h-10 shrink-0 items-stretch">
                     <WindowChromeButton label="最小化" onClick={() => desktop?.minimize()}>

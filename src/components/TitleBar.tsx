@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { useGitSummary } from "../git/useGitSummary";
 import { useRpc } from "../rpc/RpcProvider";
 import { Icon } from "./Icon";
 
@@ -85,29 +86,7 @@ function WindowControls({ desktop }: { desktop?: Window["piDesktop"] }) {
 export function TitleBar({ showTerminal = false }: { showTerminal?: boolean }) {
     const desktop = window.piDesktop;
     const { addWorkspace, workspaceBusy, status } = useRpc();
-    const [gitCount, setGitCount] = useState<number | null>(null);
-    const [branch, setBranch] = useState<string | null>(null);
-
-    useEffect(() => {
-        const desktop = window.piDesktop;
-        if (!desktop?.getGitStatus) return;
-        let active = true;
-        const refresh = () => {
-            void desktop.getGitStatus().then((result) => {
-                if (!active) return;
-                setGitCount(result.ok ? result.files.length : null);
-                setBranch(result.ok ? result.branch : null);
-            }).catch(() => { if (active) setGitCount(null); });
-        };
-        refresh();
-        window.addEventListener("focus", refresh);
-        window.addEventListener("git:changed", refresh);
-        return () => {
-            active = false;
-            window.removeEventListener("focus", refresh);
-            window.removeEventListener("git:changed", refresh);
-        };
-    }, [status.cwd]);
+    const { branch, changes: gitCount } = useGitSummary(status.cwd);
 
     return (
         <header className="titlebar-drag fixed left-0 right-0 top-0 z-chrome flex h-10 select-none items-center overflow-hidden bg-surface-container-lowest pl-space-md">
@@ -134,14 +113,26 @@ export function TitleBar({ showTerminal = false }: { showTerminal?: boolean }) {
                     </a>
                 </div>
                 <div className="flex shrink-0 items-center gap-space-sm" onDoubleClick={() => desktop?.toggleMaximize()}>
-                    <a
-                        href="#/branch"
-                        title="切换分支"
-                        className="titlebar-no-drag flex shrink-0 items-center gap-1 rounded bg-surface-container-high px-1.5 py-0.5 font-code-sm text-code-sm text-secondary transition-colors hover:bg-surface-bright"
-                    >
-                        <span>{branch || "main"}</span>
-                        <span className="text-outline">⌥</span>
-                    </a>
+                    {branch ? (
+                        <>
+                            <a
+                                href="#/branch"
+                                title="切换分支"
+                                className="titlebar-no-drag flex shrink-0 items-center gap-1 rounded bg-surface-container-high px-1.5 py-0.5 font-code-sm text-code-sm text-secondary transition-colors hover:bg-surface-bright"
+                            >
+                                <span>{branch === "HEAD" ? "分离 HEAD" : branch}</span>
+                                <span className="text-outline">⌥</span>
+                            </a>
+                            <a
+                                href="#/history"
+                                title="提交历史"
+                                className="titlebar-no-drag flex h-7 shrink-0 items-center gap-1 rounded px-1.5 font-label-sm text-label-sm text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface"
+                            >
+                                <Icon name="history" className="text-[15px]" />
+                                <span>历史</span>
+                            </a>
+                        </>
+                    ) : null}
                 </div>
             </div>
             {showTerminal ? (

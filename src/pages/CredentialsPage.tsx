@@ -2,6 +2,11 @@ import { useMemo, useState } from "react";
 import { useCredentialBoard } from "../credentials/board";
 import { CredentialCard } from "./CredentialCard";
 
+function goBack() {
+    if (window.history.length > 1) window.history.back();
+    else window.location.hash = "#/settings";
+}
+
 export function CredentialsPage() {
     const board = useCredentialBoard();
     const [query, setQuery] = useState("");
@@ -21,9 +26,22 @@ export function CredentialsPage() {
     return (
         <main className="min-h-0 flex-1 overflow-y-auto bg-pi-bg p-6 text-pi-text">
             <div className="mx-auto max-w-[940px] space-y-5">
-                <header className="border-b border-pi-border pb-4">
-                    <h1 className="text-base font-semibold tracking-tight">API Key 配置</h1>
-                    <p className="mt-1.5 text-xs text-pi-muted">选择服务商，保存或更新本地 API Key。保存后只显示密钥末尾四位。</p>
+                <header className="flex items-start gap-2 border-b border-pi-border pb-4">
+                    <button
+                        type="button"
+                        title="返回"
+                        aria-label="返回"
+                        onClick={goBack}
+                        className="-ml-1.5 mt-px flex h-6 w-6 shrink-0 items-center justify-center rounded text-pi-muted transition-colors hover:bg-pi-cardHover hover:text-pi-text"
+                    >
+                        <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                            <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                    </button>
+                    <div className="min-w-0">
+                        <h1 className="text-base font-semibold tracking-tight">API Key 配置</h1>
+                        <p className="mt-1.5 text-xs text-pi-muted">选择服务商，保存或更新本地 API Key。保存后只显示密钥末尾四位。</p>
+                    </div>
                 </header>
 
                 <input

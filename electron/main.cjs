@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, Menu } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
@@ -479,6 +479,28 @@ ipcMain.handle("git:push", (event) => {
     const cwd = gitCwd(event);
     return cwd ? gitService.push(cwd) : { ok: false, message: "这个窗口没有工作区" };
 });
+ipcMain.handle("git:branches", (event) => {
+    const cwd = gitCwd(event);
+    return cwd ? gitService.branches(cwd) : { ok: false, message: "这个窗口没有工作区", current: "", detached: false, local: [], remote: [], changes: 0 };
+});
+ipcMain.handle("git:checkout", (event, request) => {
+    const cwd = gitCwd(event);
+    if (!cwd) return { ok: false, message: "这个窗口没有工作区" };
+    if (sessions.get(event.sender.id)?.snapshot().engine === "chatting") return { ok: false, message: "代理正在运行，请等待完成或中止后再切换分支" };
+    return gitService.checkout(cwd, request);
+});
+ipcMain.handle("git:fetch", (event) => {
+    const cwd = gitCwd(event);
+    return cwd ? gitService.fetch(cwd) : { ok: false, message: "这个窗口没有工作区", current: "", detached: false, local: [], remote: [], changes: 0 };
+});
+ipcMain.handle("git:log", (event, request) => {
+    const cwd = gitCwd(event);
+    return cwd ? gitService.log(cwd, request) : { ok: false, message: "这个窗口没有工作区", ref: "", commits: [], hasMore: false };
+});
+ipcMain.handle("git:show", (event, hash) => {
+    const cwd = gitCwd(event);
+    return cwd ? gitService.show(cwd, hash) : { ok: false, message: "这个窗口没有工作区" };
+});
 
 ipcMain.handle("credentials:listProviders", async () => {
     const credentials = await credentialsPromise;
@@ -513,27 +535,6 @@ ipcMain.handle("credentials:clear", async (_event, payload) => {
     const result = await credentials.clearCredential(payload?.providerId);
     await publishCredentials();
     return result;
-});
-
-ipcMain.handle("credentials:startOAuth", async (_event, payload) => {
-    const credentials = await credentialsPromise;
-    const result = await credentials.startOAuth(payload?.providerId);
-    if (result?.status !== "error") await publishCredentials();
-    return result;
-});
-
-ipcMain.handle("credentials:logoutOAuth", async (_event, payload) => {
-    const credentials = await credentialsPromise;
-    const result = await credentials.logoutOAuth(payload?.providerId);
-    await publishCredentials();
-    return result;
-});
-
-ipcMain.handle("credentials:detectEnv", async (_event, payload) => {
-    const credentials = await credentialsPromise;
-    const detected = await credentials.detectEnv(payload?.providerId);
-    await publishCredentials();
-    return detected;
 });
 
 ipcMain.handle("models:get", async () => {
@@ -595,11 +596,6 @@ ipcMain.handle("models:set-thinking", async (event, level) => {
         }
     }
     return { ok: true, settings: await modelSettingsFor(event.sender) };
-});
-
-credentialsPromise.then((credentials) => {
-    credentials.setBrowserOpener((url) => shell.openExternal(url));
-    credentials.setOAuthEmitter((event) => broadcast("credentials:oauth-event", event));
 });
 
 let quitting = false;

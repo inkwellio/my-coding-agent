@@ -34,6 +34,11 @@ contextBridge.exposeInMainWorld("piDesktop", {
     stageGitFile: (filePath, selected) => ipcRenderer.invoke("git:stage", filePath, selected),
     commitGitChanges: (message) => ipcRenderer.invoke("git:commit", message),
     pushGitChanges: () => ipcRenderer.invoke("git:push"),
+    listGitBranches: () => ipcRenderer.invoke("git:branches"),
+    checkoutGitBranch: (request) => ipcRenderer.invoke("git:checkout", request),
+    fetchGitRemotes: () => ipcRenderer.invoke("git:fetch"),
+    getGitLog: (request) => ipcRenderer.invoke("git:log", request),
+    showGitCommit: (hash) => ipcRenderer.invoke("git:show", hash),
     onWorkspacesChanged: (callback) => {
         const listener = (_event, state) => callback(state);
         ipcRenderer.on("workspaces:changed", listener);
@@ -53,14 +58,6 @@ contextBridge.exposeInMainWorld("piDesktop", {
     getCredentialStatus: () => ipcRenderer.invoke("credentials:getStatus"),
     saveApiKey: (providerId, apiKey) => ipcRenderer.invoke("credentials:saveApiKey", { providerId, apiKey }),
     clearCredential: (providerId) => ipcRenderer.invoke("credentials:clear", { providerId }),
-    startOAuth: (providerId) => ipcRenderer.invoke("credentials:startOAuth", { providerId }),
-    logoutOAuth: (providerId) => ipcRenderer.invoke("credentials:logoutOAuth", { providerId }),
-    detectEnv: (providerId) => ipcRenderer.invoke("credentials:detectEnv", providerId ? { providerId } : {}),
-    onOAuthEvent: (callback) => {
-        const listener = (_event, event) => callback(event);
-        ipcRenderer.on("credentials:oauth-event", listener);
-        return () => ipcRenderer.removeListener("credentials:oauth-event", listener);
-    },
     onCredentialStatus: (callback) => {
         const listener = (_event, payload) => callback(payload);
         ipcRenderer.on("credentials:status", listener);

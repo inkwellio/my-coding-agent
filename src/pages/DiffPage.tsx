@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GitChangeFileRow } from "../components/GitChangeFileRow";
 import { Icon } from "../components/Icon";
 import { withStableFileOrder } from "../git/fileOrder";
+import { diffTone, GIT_HEAD_CHANGED } from "../git/format";
 import type { GitStatus } from "../git/types";
 import { useRpc } from "../rpc/RpcProvider";
 
@@ -14,13 +15,6 @@ function optimisticStage(status: GitStatus, filePath: string | null, selected: b
             return { ...file, staged: selected };
         }),
     };
-}
-
-function diffTone(line: string) {
-    if (line.startsWith("+") && !line.startsWith("+++")) return "bg-tertiary-container/15 text-tertiary";
-    if (line.startsWith("-") && !line.startsWith("---")) return "bg-error-container/20 text-error";
-    if (line.startsWith("@@")) return "bg-surface-container text-secondary";
-    return "text-on-surface-variant";
 }
 
 export function DiffPage() {
@@ -67,7 +61,11 @@ export function DiffPage() {
         void refresh();
         const onFocus = () => void refresh();
         window.addEventListener("focus", onFocus);
-        return () => window.removeEventListener("focus", onFocus);
+        window.addEventListener(GIT_HEAD_CHANGED, onFocus);
+        return () => {
+            window.removeEventListener("focus", onFocus);
+            window.removeEventListener(GIT_HEAD_CHANGED, onFocus);
+        };
     }, [engine.cwd, refresh]);
 
     const selectedFileRevision = useMemo(() => {

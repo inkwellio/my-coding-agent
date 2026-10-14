@@ -11,7 +11,7 @@
         "start": "npm run build && electron .",
         "build": "tsc --noEmit && vite build",
         "typecheck": "tsc --noEmit",
-        "test:git": "node scripts/git-smoke.mjs",
+        "test:git": "node scripts/git-smoke.mjs && node scripts/git-branch-smoke.mjs",
         "test:mcp": "node scripts/mcp-smoke.mjs",
         "test:sandbox": "node scripts/sandbox-smoke.mjs",
         "test:sandbox:integration": "node scripts/sandbox-integration-smoke.mjs",

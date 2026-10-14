@@ -128,4 +128,183 @@ async function push(cwd) {
     }
 }
 
-module.exports = { status, diff, stage, commit, push };
+const networkOptions = { timeout: 120000, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } };
+
+function parseTrack(track) {
+    const ahead = /ahead (\d+)/.exec(track);
+    const behind = /behind (\d+)/.exec(track);
+    return { ahead: ahead ? Number(ahead[1]) : 0, behind: behind ? Number(behind[1]) : 0, gone: track === "gone" };
+}
+
+async function refExists(root, ref) {
+    try {
+        await git(root, ["show-ref", "--verify", "--quiet", ref]);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function validBranchName(root, name) {
+    if (typeof name !== "string" || !name.trim() || name.trim().startsWith("-")) return null;
+    try {
+        return (await git(root, ["check-ref-format", "--branch", name.trim()])).trim();
+    } catch {
+        return null;
+    }
+}
+
+async function branches(cwd) {
+    try {
+        const root = (await git(cwd, ["rev-parse", "--show-toplevel"])).trim();
+        const current = (await git(root, ["branch", "--show-current"])).trim();
+        let head = "";
+        try {
+            head = (await git(root, ["rev-parse", "--short", "HEAD"])).trim();
+        } catch {
+            // An unborn branch has no commit yet.
+        }
+        const raw = await git(root, [
+            "for-each-ref",
+            "--sort=-committerdate",
+            "--format=%(refname)%00%(refname:short)%00%(upstream:short)%00%(upstream:track,nobracket)%00%(committerdate:unix)",
+            "refs/heads",
+            "refs/remotes",
+        ]);
+        const local = [];
+        const remote = [];
+        for (const line of raw.split("\n")) {
+            if (!line) continue;
+            const [ref, name, upstream, track, date] = line.split("\0");
+            if (ref.startsWith("refs/heads/")) {
+                local.push({ name, upstream: upstream || null, ...parseTrack(track), date: Number(date) || 0, current: name === current });
+            } else if (!ref.endsWith("/HEAD")) {
+                remote.push({ name, date: Number(date) || 0 });
+            }
+        }
+        const state = await status(root);
+        return {
+            ok: true,
+            current: current || head,
+            detached: !current,
+            local,
+            remote,
+            changes: state.ok ? state.files.length : 0,
+        };
+    } catch (error) {
+        return { ok: false, message: errorMessage(error), current: "", detached: false, local: [], remote: [], changes: 0 };
+    }
+}
+
+async function checkout(cwd, request) {
+    const create = request?.create === true;
+    const fromRemote = request?.remote === true;
+    try {
+        const root = (await git(cwd, ["rev-parse", "--show-toplevel"])).trim();
+        const name = await validBranchName(root, request?.name);
+        if (!name) return { ok: false, message: "分支名无效" };
+
+        let args;
+        let target = name;
+        if (create) {
+            if (await refExists(root, `refs/heads/${name}`)) return { ok: false, message: `分支 ${name} 已存在` };
+            args = ["switch", "-c", name];
+        } else if (fromRemote) {
+            if (!(await refExists(root, `refs/remotes/${name}`))) return { ok: false, message: `远程分支 ${name} 不存在` };
+            const remotes = (await git(root, ["remote"])).trim().split("\n").filter(Boolean);
+            const remoteName = remotes.filter((item) => name.startsWith(`${item}/`)).sort((a, b) => b.length - a.length)[0];
+            if (!remoteName) return { ok: false, message: `无法识别 ${name} 所属的远程仓库` };
+            target = name.slice(remoteName.length + 1);
+            args = (await refExists(root, `refs/heads/${target}`)) ? ["switch", target] : ["switch", "-c", target, "--track", name];
+        } else {
+            if (!(await refExists(root, `refs/heads/${name}`))) return { ok: false, message: `本地分支 ${name} 不存在` };
+            args = ["switch", name];
+        }
+
+        let stashed = false;
+        if (request?.stash === true) {
+            const current = await status(root);
+            if (current.ok && current.files.length > 0) {
+                await git(root, ["stash", "push", "--include-untracked", "-m", `pi: 切换到 ${target} 前自动暂存`]);
+                stashed = true;
+            }
+        }
+        try {
+            await git(root, args);
+        } catch (error) {
+            if (stashed) await git(root, ["stash", "pop"]).catch(() => {});
+            throw error;
+        }
+        return { ...(await branches(root)), branch: target, stashed };
+    } catch (error) {
+        return { ok: false, message: errorMessage(error) };
+    }
+}
+
+async function fetchRemotes(cwd) {
+    try {
+        const root = (await git(cwd, ["rev-parse", "--show-toplevel"])).trim();
+        const remotes = (await git(root, ["remote"])).trim().split("\n").filter(Boolean);
+        if (remotes.length === 0) return { ...(await branches(root)), ok: false, message: "尚未配置远程仓库" };
+        await git(root, ["fetch", "--all", "--prune"], networkOptions);
+        return await branches(root);
+    } catch (error) {
+        return { ok: false, message: errorMessage(error), current: "", detached: false, local: [], remote: [], changes: 0 };
+    }
+}
+
+async function log(cwd, request = {}) {
+    const limit = Math.min(Math.max(Number(request.limit) || 50, 1), 200);
+    const skip = Math.max(Number(request.skip) || 0, 0);
+    const ref = typeof request.ref === "string" && request.ref.trim() ? request.ref.trim() : "HEAD";
+    if (ref.startsWith("-")) return { ok: false, message: "引用无效", ref, commits: [], hasMore: false };
+    try {
+        const root = (await git(cwd, ["rev-parse", "--show-toplevel"])).trim();
+        try {
+            await git(root, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+        } catch {
+            if (ref === "HEAD") return { ok: true, ref, commits: [], hasMore: false };
+            return { ok: false, message: `找不到 ${ref}`, ref, commits: [], hasMore: false };
+        }
+        const raw = await git(root, [
+            "log",
+            "--format=%H%x1f%h%x1f%an%x1f%ae%x1f%at%x1f%P%x1f%D%x1f%s%x1e",
+            `--max-count=${limit + 1}`,
+            `--skip=${skip}`,
+            ref,
+            "--",
+        ]);
+        const commits = raw.split("\x1e").map((record) => record.replace(/^\n/, "")).filter(Boolean).map((record) => {
+            const [hash, shortHash, author, email, date, parents, refs, subject] = record.split("\x1f");
+            return {
+                hash,
+                shortHash,
+                author,
+                email,
+                date: Number(date) || 0,
+                parents: parents ? parents.split(" ") : [],
+                refs: refs ? refs.split(", ").filter(Boolean) : [],
+                subject,
+            };
+        });
+        return { ok: true, ref, commits: commits.slice(0, limit), hasMore: commits.length > limit };
+    } catch (error) {
+        return { ok: false, message: errorMessage(error), ref, commits: [], hasMore: false };
+    }
+}
+
+const SHOW_LIMIT = 400000;
+
+async function show(cwd, hash) {
+    if (typeof hash !== "string" || !/^[0-9a-f]{7,64}$/i.test(hash)) return { ok: false, message: "提交哈希无效" };
+    try {
+        const root = (await git(cwd, ["rev-parse", "--show-toplevel"])).trim();
+        const text = await git(root, ["show", "--format=fuller", "--stat", "--patch", "--no-ext-diff", "--no-color", hash, "--"]);
+        if (text.length <= SHOW_LIMIT) return { ok: true, text };
+        return { ok: true, text: `${text.slice(0, SHOW_LIMIT)}\n\n… 差异超过 400 KB，已截断`, truncated: true };
+    } catch (error) {
+        return { ok: false, message: errorMessage(error) };
+    }
+}
+
+module.exports = { status, diff, stage, commit, push, branches, checkout, fetch: fetchRemotes, log, show };

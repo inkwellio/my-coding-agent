@@ -1,6 +1,6 @@
 # Pi desktop shell
 
-Electron workspace for the Pi coding agent. The shell includes the main workspace, diff review, settings, onboarding, model-credential states, and the branch switcher. Copy and layout follow the Stitch screens. Conversation sessions and credentials use Pi's local storage; some git and review screens still use placeholders.
+Electron workspace for the Pi coding agent. The shell includes the main workspace, diff review, commit history, settings, onboarding, model credentials, and the branch switcher. Copy and layout follow the Stitch screens. Conversation sessions and credentials use Pi's local storage.
 
 The target architecture below is locked. This slice wires the per-window RPC loop and a real credentials page over Pi AuthStorage. Command isolation can now be enabled per window in Settings → Permissions.
 
@@ -45,7 +45,7 @@ The app bundles a standalone `pi`, built with build-binaries, into `extraResourc
 ### Phasing
 
 1. UI shell first. Done.
-2. Credentials IPC. `#/credentials` lists every built-in provider and can save, clear, detect env keys, and start OAuth. The screen is no longer a static mock.
+2. Credentials IPC. `#/credentials` lists every built-in provider that accepts a single API key, and can save or clear that key.
 3. Real RpcClient spawn. The minimal per-window loop (spawn, `get_state`, `prompt`, stream, stop) is in.
 4. Optional command sandbox. Available through Settings → Permissions, with live state and Windows installation flow.
 
@@ -99,7 +99,7 @@ Open **Settings → Extensions & MCP** in the desktop window to add a local stdi
 
 The UI edits Pi's user-level `~/.pi/agent/mcp.json` (or `$PI_CODING_AGENT_DIR/mcp.json`). Existing Electron `mcp-servers.json` entries are migrated on first use and the old file is renamed `.migrated`. Pi handles MCP connections, codemode tool exposure, OAuth, and reconnection. Configuration changes restart idle RPC sessions; if a chat is running, reload tools after the response finishes. `npm run test:mcp` checks configuration and migration.
 
-Each window’s main process owns one session, keyed by `webContentsId`. Opening the window spawns pi, calls `get_state`, and drives the workspace status-bar engine chip (`空闲 · 已连接`, `对话中`, `重连中`, `已断开`). Sending from the workspace composer calls `prompt` and streams assistant text, tool events, and turn boundaries into the session. Closing the window ends that RPC session and kills that child. The `#/engine` page stays a visual spec; its chips are not the live session.
+Each window’s main process owns one session, keyed by `webContentsId`. Opening the window spawns pi, calls `get_state`, and drives the workspace status-bar engine chip (`空闲 · 已连接`, `对话中`, `重连中`, `已断开`). Sending from the workspace composer calls `prompt` and streams assistant text, tool events, and turn boundaries into the session. Closing the window ends that RPC session and kills that child.
 
 Assistant text is assembled only from `message_update` events whose `assistantMessageEvent.type` is `text_delta`. Chunks are stored by `contentIndex` and joined in index order. The new protocol has no cumulative `message` snapshot on `message_update`, and this shell does not read one from `message_start` or `message_end` either.
 
@@ -121,7 +121,7 @@ The initial working directory is `PI_PROJECT_CWD` when that path is a folder, ot
 
 ### Credentials
 
-Auth stays in the main process. The host wraps Pi `AuthStorage` (`~/.pi/agent/auth.json`). An API-key save calls `AuthStorage.modify(providerId, fn)`, and `fn` returns `{ "type": "api_key", "key": "..." }`. The file is keyed by the pi-ai provider id, so DeepSeek is `auth.json` → `deepseek`. `checkAuth` runs after that write. Clears and OAuth logout call `logout`, which deletes the stored credential. OAuth login still goes through `ModelRuntime.login`, which persists with the same `modify` path. The renderer never receives the key.
+Auth stays in the main process. The host wraps Pi `AuthStorage` (`~/.pi/agent/auth.json`). An API-key save calls `AuthStorage.modify(providerId, fn)`, and `fn` returns `{ "type": "api_key", "key": "..." }`. The file is keyed by the pi-ai provider id, so DeepSeek is `auth.json` → `deepseek`. `checkAuth` runs after that write. A clear calls `logout`, which deletes the stored credential (an OAuth credential written by the Pi CLI is removed the same way). The renderer never receives the key.
 
 IPC:
 
@@ -131,12 +131,9 @@ IPC:
 | `getStatus` | `credentials:getStatus` | mask, source, status per provider |
 | `saveApiKey` | `credentials:saveApiKey` | mask, source, status after save |
 | `clear` | `credentials:clear` | the same triple |
-| `startOAuth` / `logoutOAuth` | `credentials:startOAuth`, `credentials:logoutOAuth` | the same triple, plus `credentials:oauth-event` (`opened` / `waiting` / `success` / `error`) |
-| `detectEnv` | `credentials:detectEnv` | provider id and env var **names** from `findEnvKeys` |
-
 There is no `retrySave`. A failed save leaves the key in the password field; saving again calls `saveApiKey`.
 
-Provider ids and auth flags come from pi-ai’s built-in registry (`ModelRuntime.getProviders()`, fed by `builtinProviders()`). Model ids come from `ModelRegistry.getAll()` over that same runtime. Nothing on this page is a hand-copied vendor list. Each provider’s `auth.apiKey.login` / `auth.oauth.login` decides the flags: single-secret API key, OAuth, both, or `authFlow: "multi-step"`. `openai-codex` is OAuth-only. Amazon Bedrock, Google Vertex, and the Cloudflare providers are multi-step and stay disabled on this page. OAuth is offered for every provider whose auth object has an OAuth login (Anthropic, OpenAI Codex, GitHub Copilot, OpenRouter, xAI, Kimi, Radius, Meta, and any later registry entry). Every single-secret provider is saved with the same `AuthStorage.modify(providerId, …)` call.
+Provider ids and auth flags come from pi-ai’s built-in registry (`ModelRuntime.getProviders()`, fed by `builtinProviders()`). Model ids come from `ModelRegistry.getAll()` over that same runtime. Nothing on this page is a hand-copied vendor list. Each provider’s `auth.apiKey.login` / `auth.oauth.login` decides the flags: single-secret API key, OAuth, both, or `authFlow: "multi-step"`. The page shows only providers with a single-secret API key. OAuth-only providers such as `openai-codex`, and multi-step providers such as Amazon Bedrock, Google Vertex, and Cloudflare, are not listed; sign in to those with the Pi CLI. Every listed provider is saved with the same `AuthStorage.modify(providerId, …)` call.
 
 A stored API key is masked to `••••` plus the last four characters (shorter values stay `••••`). OAuth is `oauth ••••`. An environment key is reported by variable name only, for example `DEEPSEEK_API_KEY`. If nothing is configured, the composer links to `#/credentials` and does not call `prompt`. After a successful save the main process pushes `credentials:status`, and the workspace gate clears without restarting the window.
 
@@ -157,7 +154,7 @@ In the desktop window:
 
 `set_model` looks the model up on provider `deepseek` with `modelRuntime.getAvailableSnapshot()`. This app asks `ModelRegistry.getAll()` for provider `deepseek`, prefers id `deepseek-flash`, and otherwise takes a model whose name contains “Flash”.
 
-Env keys still work. `重新检测 ENV` calls `detectEnv` → `findEnvKeys` and reports the variable name only. DeepSeek’s variable is `DEEPSEEK_API_KEY`:
+Env keys still work. Provider status checks `findEnvKeys` and reports the variable name only. DeepSeek’s variable is `DEEPSEEK_API_KEY`:
 
 ```bash
 DEEPSEEK_API_KEY=sk-... npm run dev
@@ -192,39 +189,24 @@ Routes are hashes, so they work in the browser and in the Electron window.
 | Settings | [#/settings](http://127.0.0.1:5173/#/settings) |
 | Onboarding | [#/onboarding](http://127.0.0.1:5173/#/onboarding) |
 | Model credentials | [#/credentials](http://127.0.0.1:5173/#/credentials) |
-| Branch switcher, dirty worktree | [#/branch](http://127.0.0.1:5173/#/branch) |
-| Branch switcher, clean | [#/branch?dirty=0](http://127.0.0.1:5173/#/branch?dirty=0) |
-| Status bar spec | [#/status](http://127.0.0.1:5173/#/status) |
-| Engine status | [#/engine](http://127.0.0.1:5173/#/engine) |
+| Branch switcher | [#/branch](http://127.0.0.1:5173/#/branch) |
+| Commit history | [#/history](http://127.0.0.1:5173/#/history) |
 
 Inside the window:
 
 - **提交更改** opens the current workspace's Git review. Select files to stage, inspect their diffs, enter a commit message, and commit the staged files locally. The action does not push.
 - **设置** opens preferences. **模型与计算** and the primary model row open credentials.
-- **打开文件夹** opens the project picker. A recent project returns to the workspace.
-- The **main** badge in the title bar, and the branch chip on the status bar, open the branch switcher. It opens on the dirty worktree from the HTML export. `#/branch?dirty=0` hides that warning. A real search string still works (`?dirty=0#/branch`). **刷新** toggles the warning. The chip stays `main*`.
-- **已消耗 4.2k tokens** on the workspace footer opens the status-bar spec. **延迟 24ms** opens the engine status screen. **Git: main** and the title-bar branch chip open the branch switcher.
-
+- **打开文件夹** opens the native directory picker in Electron, or the onboarding page in a browser preview.
+- The branch badge in the title bar, and **Git: &lt;branch&gt;** on the status bar, open the branch switcher over the current page. It lists local and remote branches from the workspace repository. Picking a local branch switches to it, picking a remote branch checks it out as a local tracking branch, and typing a new name offers to create it from the current branch. With uncommitted changes it asks first: switch carrying the changes (Git refuses on conflicts), or stash them and switch. **拉取远程 (Fetch)** runs `git fetch --all --prune`. Switching is refused while the agent is running.
+- **历史** in the title bar opens the commit history of the current branch, or of any local or remote branch picked from the selector. Selecting a commit shows its message, file stats, and patch.
 ## Status bar
 
-Workspace, diff, and settings use the 24px footer from those screens: `Git: main ✓ | Pi Engine: v2.4 (Ready) | 权限: 自动执行 (安全模式)`. In the Electron window that middle chip follows the live RPC session instead. Credentials uses its own footer (`凭据存储: 本地 AuthStorage 就绪`). The branch screen uses `⎇ main`, and the same live chip when the shell is connected.
+Workspace, diff, history, and settings share a 24px footer with up to three chips, each shown only when its data is available:
 
-`#/engine` uses the taller status bar: four engine chips at once, plus a sandbox chip.
-
-| Chip | States |
+| Chip | Shows |
 | --- | --- |
-| 引擎 · RPC | 空闲 · 已连接 / 对话中 / 重连中 / 已断开. Each chip keeps the subtitle 每窗口独立进程. Click one to mark it active. |
-| 沙盒 | Grey **沙盒 · 未启用**, in-progress **沙盒 · 正在启用**, or bright **沙盒 · 命令隔离**. |
+| Git | The current branch, `✓` when the worktree is clean or `*` with uncommitted changes. Opens the branch switcher. Hidden outside a Git repository. |
+| 引擎 · RPC | The live session: 空闲 · 已连接 / 对话中 / 重连中 / 已断开. Electron only. |
+| 沙盒 | **沙盒 · 未启用**, **沙盒 · 正在启用**, or **沙盒 · 命令隔离**. Opens Settings → Permissions. Electron only. |
 
-In Electron, click the sandbox chip to change the real command-isolation setting. Installation and diagnostic details are in Settings → Permissions. In browser previews the chip cycles sample states. Press Escape during **正在启用** to request cancellation. Hover the chip while it is on for the 沙盒隔离策略 note. `#/engine?policy=1` (or `?policy=1`) opens that note when the sandbox is on. The default is idle and sandbox off.
-
-Query overrides live in the hash, and the same keys in `location.search` still apply. A hash key wins when both set it.
-
-```text
-#/engine?engine=chatting&sandbox=off
-#/engine?engine=reconnecting&sandbox=enabling
-#/engine?engine=disconnected
-#/engine?sandbox=on&policy=1
-```
-
-`engine` is `idle`, `chatting`, `reconnecting`, or `disconnected`. `sandbox` is `off`, `enabling`, or `on`. Changing the hash re-reads sample `engine`, `sandbox`, `dirty`, and `policy` values without a reload. Electron sandbox state comes only from the main process.
+Press Escape during **正在启用** to request cancellation. Credentials uses its own frame without this footer.

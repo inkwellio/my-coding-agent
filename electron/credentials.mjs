@@ -35,10 +35,7 @@ let findEnvKeysFn;
 let readStoredCredentialFn;
 let settingsManagerFn;
 let ModelRegistryCtor;
-let openExternal = async () => {};
-let emitOAuth = () => {};
 const flowCache = new Map();
-const oauthJobs = new Map();
 
 function packageRoot() {
     const indexPath = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
@@ -69,14 +66,6 @@ async function settingsManager() {
         settingsManagerFn = coding.SettingsManager;
     }
     return settingsManagerFn;
-}
-
-export function setBrowserOpener(fn) {
-    openExternal = typeof fn === "function" ? fn : async () => {};
-}
-
-export function setOAuthEmitter(fn) {
-    emitOAuth = typeof fn === "function" ? fn : () => {};
 }
 
 async function getRuntime() {
@@ -406,11 +395,6 @@ async function deleteCredential(providerId) {
     const runtime = await getRuntime();
     const provider = runtime.getProvider(id);
     if (!provider) return failure(id, "未知服务商");
-    const job = oauthJobs.get(id);
-    if (job) {
-        job.abort();
-        oauthJobs.delete(id);
-    }
     await runtime.logout(id);
     const findEnvKeys = await piAiEnv();
     return statusForProvider(runtime, findEnvKeys, provider, undefined);
@@ -422,126 +406,6 @@ export async function clearCredential(providerId) {
     } catch (error) {
         return failure(String(providerId ?? ""), scrub(error instanceof Error ? error.message : error));
     }
-}
-
-export async function logoutOAuth(providerId) {
-    return clearCredential(providerId);
-}
-
-function emit(providerId, phase, extra = {}) {
-    const event = {
-        providerId,
-        phase,
-        ...(extra.message ? { message: scrub(extra.message) } : {}),
-        ...(typeof extra.url === "string" ? { url: extra.url } : {}),
-        ...(typeof extra.userCode === "string" ? { userCode: extra.userCode } : {}),
-    };
-    try {
-        emitOAuth(event);
-    } catch {
-        // The window may already be gone.
-    }
-    return event;
-}
-
-function oauthInteraction(providerId, signal) {
-    return {
-        signal,
-        notify(event) {
-            if (!event || typeof event !== "object") return;
-            if (event.type === "auth_url" && typeof event.url === "string") {
-                emit(providerId, "opened", { url: event.url, message: event.instructions || "已打开登录页" });
-                if (/^https?:\/\//i.test(event.url)) void openExternal(event.url).catch(() => {});
-                return;
-            }
-            if (event.type === "device_code") {
-                const url = typeof event.verificationUri === "string" ? event.verificationUri : undefined;
-                const userCode = typeof event.userCode === "string" ? event.userCode : undefined;
-                emit(providerId, "opened", {
-                    url,
-                    userCode,
-                    message: userCode ? `在浏览器输入设备码 ${userCode}` : "已打开设备码登录页",
-                });
-                if (url && /^https?:\/\//i.test(url)) void openExternal(url).catch(() => {});
-                emit(providerId, "waiting", { message: userCode ? `等待授权 · ${userCode}` : "等待授权" });
-                return;
-            }
-            if (event.type === "progress" || event.type === "info") {
-                emit(providerId, "waiting", { message: typeof event.message === "string" ? event.message : "等待授权" });
-            }
-        },
-        prompt(prompt) {
-            const message = typeof prompt?.message === "string" ? prompt.message : "";
-            if (prompt?.type === "text" && /blank/i.test(message)) return "";
-            const promptSignal = prompt?.signal;
-            if (promptSignal && typeof promptSignal.addEventListener === "function") {
-                emit(providerId, "waiting", { message: message || "在浏览器完成登录" });
-                return new Promise((resolve, reject) => {
-                    const fail = () => reject(new Error("OAuth 登录已取消"));
-                    if (promptSignal.aborted) {
-                        fail();
-                        return;
-                    }
-                    promptSignal.addEventListener("abort", fail, { once: true });
-                });
-            }
-            throw new Error("此 OAuth 步骤需要额外输入，当前页面只支持浏览器回调或设备码");
-        },
-    };
-}
-
-export async function startOAuth(providerId) {
-    let id = "";
-    try {
-        id = requireProviderId(providerId);
-        const runtime = await getRuntime();
-        const provider = runtime.getProvider(id);
-        if (!provider) return failure(id, "未知服务商");
-        const flow = await classify(provider);
-        if (flow !== "oauth" && flow !== "both") {
-            return failure(id, "此服务商不支持 OAuth");
-        }
-        const previous = oauthJobs.get(id);
-        if (previous) previous.abort();
-        const controller = new AbortController();
-        oauthJobs.set(id, controller);
-        emit(id, "waiting", { message: "正在发起 OAuth 登录" });
-        try {
-            await runtime.login(id, "oauth", oauthInteraction(id, controller.signal));
-            if (controller.signal.aborted) return failure(id, "OAuth 登录已取消");
-            const check = await runtime.checkAuth(id);
-            if (!check) return failure(id, "OAuth 登录未完成");
-            const row = await statusForProvider(runtime, await piAiEnv(), provider, "oauth");
-            emit(id, "success", { message: "OAuth 已登录" });
-            return row;
-        } catch (error) {
-            if (controller.signal.aborted) {
-                emit(id, "error", { message: "OAuth 登录已取消" });
-                return failure(id, "OAuth 登录已取消");
-            }
-            const message = scrub(error instanceof Error ? error.message : error);
-            emit(id, "error", { message });
-            return failure(id, message || "OAuth 登录失败");
-        } finally {
-            if (oauthJobs.get(id) === controller) oauthJobs.delete(id);
-        }
-    } catch (error) {
-        const message = scrub(error instanceof Error ? error.message : error);
-        if (id) emit(id, "error", { message });
-        return failure(id, message);
-    }
-}
-
-export async function detectEnv(providerId) {
-    const findEnvKeys = await piAiEnv();
-    const runtime = await getRuntime();
-    const ids = typeof providerId === "string" && providerId
-        ? [requireProviderId(providerId)]
-        : runtime.getProviders().map((provider) => provider.id);
-    return ids.map((id) => ({
-        providerId: id,
-        envVars: presentEnvVarNames(findEnvKeys, id),
-    }));
 }
 
 export function displayModelName(providerId, modelId, name) {

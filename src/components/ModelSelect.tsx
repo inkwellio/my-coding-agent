@@ -13,7 +13,7 @@ async function choosePair(pair: string) {
     await chooseModel(pair.slice(0, slash), pair.slice(slash + 1));
 }
 
-export function ModelSelect({ variant, fallback = "Sonnet-3.5" }: ModelSelectProps) {
+export function ModelSelect({ variant, fallback = "未选择模型" }: ModelSelectProps) {
     const board = useCredentialBoard();
     const configured = useMemo(() => {
         const ids = new Set(

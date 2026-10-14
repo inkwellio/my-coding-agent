@@ -34,19 +34,6 @@ export interface ProviderStatus {
     message?: string;
 }
 
-export interface EnvHit {
-    providerId: string;
-    envVars: string[];
-}
-
-export interface OAuthEvent {
-    providerId: string;
-    phase: "opened" | "waiting" | "success" | "error";
-    message?: string;
-    url?: string;
-    userCode?: string;
-}
-
 export interface SelectedModel {
     providerId: string | null;
     modelId: string | null;

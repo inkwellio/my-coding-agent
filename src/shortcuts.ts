@@ -154,10 +154,6 @@ export function comboKeys(combo: string) {
     });
 }
 
-export function formatCombo(combo: string) {
-    return comboKeys(combo).join(" + ");
-}
-
 let capturing = false;
 
 /** While the settings page records a new combo, global shortcuts stay quiet. */
