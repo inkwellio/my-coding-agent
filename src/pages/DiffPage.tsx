@@ -103,7 +103,6 @@ export function DiffPage() {
         setLoading(false);
         setError("");
         setSuccess("");
-        const snapshot = git;
         setGit((current) => (current?.ok ? optimisticStage(current, filePath, selected) : current));
         try {
             const result = await desktop.stageGitFile(filePath, selected);
@@ -113,8 +112,9 @@ export function DiffPage() {
             setSelectedPath((current) => result.files.some((file) => file.path === current) ? current : result.files[0]?.path ?? null);
             window.dispatchEvent(new Event("git:changed"));
         } catch (cause) {
-            if (snapshot?.ok) setGit(snapshot);
             setError(cause instanceof Error ? cause.message : "暂存失败");
+            // Re-read instead of restoring a snapshot: memoized rows can hold a stale closure.
+            if (cwd === cwdRef.current) void refresh();
         } finally {
             stagingRef.current = false;
             setStaging(false);
@@ -171,6 +171,10 @@ export function DiffPage() {
 
     const files = git?.files ?? [];
     const stagedCount = files.filter((file) => file.staged).length;
+    const commitBlocker = !git?.ok ? null
+        : stagedCount === 0 ? "勾选要提交的文件后才能提交"
+        : !message.trim() ? "填写提交说明后才能提交"
+        : null;
     const diffText = diff && diff.cwd === engine.cwd && diff.path === selectedPath ? diff.text : null;
     return (
         <main className="flex h-full min-h-0 w-full overflow-hidden bg-surface text-on-surface">
@@ -224,8 +228,21 @@ export function DiffPage() {
                     {error ? <p role="alert" className="mb-space-sm whitespace-pre-wrap text-error">{error}</p> : null}
                     {success ? <p role="status" className="mb-space-sm text-tertiary">{success}</p> : null}
                     <label htmlFor="git-commit-message" className="mb-1 block font-label-sm text-label-sm text-on-surface-variant">提交说明</label>
-                    <textarea id="git-commit-message" value={message} onChange={(event) => setMessage(event.target.value)} rows={2} placeholder="描述这次更改" className="w-full resize-none rounded bg-surface-container px-space-sm py-2 text-on-surface focus:outline-none focus:ring-1 focus:ring-primary" />
-                    <button type="button" onClick={() => void commit()} disabled={busy || !git?.ok || stagedCount === 0 || !message.trim()} className="mt-space-sm rounded bg-primary px-space-md py-2 font-label-sm text-label-sm text-on-primary hover:bg-primary-container disabled:cursor-not-allowed disabled:opacity-50">
+                    <textarea
+                        id="git-commit-message"
+                        value={message}
+                        onChange={(event) => setMessage(event.target.value)}
+                        onKeyDown={(event) => {
+                            if (event.key !== "Enter" || !(event.ctrlKey || event.metaKey) || event.nativeEvent.isComposing) return;
+                            event.preventDefault();
+                            if (!busy && !commitBlocker && git?.ok) void commit();
+                        }}
+                        rows={2}
+                        placeholder="描述这次更改（Ctrl+Enter 提交）"
+                        className="w-full resize-none rounded bg-surface-container px-space-sm py-2 text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                    {commitBlocker && !error && !success ? <p className="mt-space-xs font-body-xs text-body-xs text-on-surface-variant">{commitBlocker}</p> : null}
+                    <button type="button" onClick={() => void commit()} title={commitBlocker ?? undefined} disabled={busy || !git?.ok || Boolean(commitBlocker)} className="mt-space-sm rounded bg-primary px-space-md py-2 font-label-sm text-label-sm text-on-primary hover:bg-primary-container disabled:cursor-not-allowed disabled:opacity-50">
                         {busy ? "处理中…" : `提交 ${stagedCount} 个已暂存文件`}
                     </button>
                     <button type="button" onClick={() => void push()} disabled={busy || !git?.ok || git.branch === "HEAD"} className="ml-space-sm mt-space-sm rounded bg-surface-container-high px-space-md py-2 font-label-sm text-label-sm text-on-surface hover:bg-surface-bright disabled:cursor-not-allowed disabled:opacity-50">

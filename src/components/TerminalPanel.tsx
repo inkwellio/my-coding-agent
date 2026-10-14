@@ -1,11 +1,19 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { Icon } from "./Icon";
+
+const HISTORY_LIMIT = 100;
 
 export function TerminalPanel({ cwd, sandboxState, width, onClose }: { cwd: string; sandboxState?: string; width: number; onClose: () => void }) {
     const [output, setOutput] = useState("");
     const [command, setCommand] = useState("");
     const [running, setRunning] = useState(false);
+    const [starting, setStarting] = useState(false);
+    // Bumping the session restarts the shell through the same effect that owns its lifetime.
+    const [session, setSession] = useState(0);
     const outputRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+    const history = useRef<string[]>([]);
+    const historyIndex = useRef(-1);
 
     useEffect(() => {
         const desktop = window.piDesktop;
@@ -13,6 +21,7 @@ export function TerminalPanel({ cwd, sandboxState, width, onClose }: { cwd: stri
         let active = true;
         setOutput("");
         setRunning(false);
+        setStarting(true);
         const unsubscribe = desktop.onTerminalEvent((event) => {
             if (!active) return;
             if (event.type === "exit") {
@@ -26,25 +35,50 @@ export function TerminalPanel({ cwd, sandboxState, width, onClose }: { cwd: stri
             if (!active) return;
             setRunning(result.ok);
             setOutput(result.ok ? `工作目录：${result.cwd}\n` : `${result.message || "启动终端失败"}\n`);
-        }).catch((error) => { if (active) setOutput(`${String(error)}\n`); });
+        }).catch((error) => { if (active) setOutput(`${String(error)}\n`); })
+            .finally(() => { if (active) setStarting(false); });
         return () => {
             active = false;
             unsubscribe();
             void desktop.stopTerminal();
         };
-    }, [cwd, sandboxState]);
+    }, [cwd, sandboxState, session]);
 
     useEffect(() => { outputRef.current?.scrollTo({ top: outputRef.current.scrollHeight }); }, [output, command]);
+
+    useEffect(() => {
+        if (running) inputRef.current?.focus();
+    }, [running]);
+
+    const restart = useCallback(() => setSession((value) => value + 1), []);
 
     function submit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         const value = command;
         if (!value.trim() || !running) return;
+        if (history.current.at(-1) !== value) history.current = [...history.current, value].slice(-HISTORY_LIMIT);
+        historyIndex.current = -1;
         setOutput((current) => current + `${current.endsWith("\n") ? "" : "\n"}$ ${value}\n`);
         setCommand("");
         void window.piDesktop?.writeTerminal(value).then((result) => {
             if (!result.ok) setOutput((current) => current + `${result.message || "发送命令失败"}\n`);
         });
+    }
+
+    function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+        if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+        const entries = history.current;
+        if (!entries.length) return;
+        event.preventDefault();
+        const current = historyIndex.current === -1 ? entries.length : historyIndex.current;
+        const next = event.key === "ArrowUp" ? Math.max(0, current - 1) : current + 1;
+        if (next >= entries.length) {
+            historyIndex.current = -1;
+            setCommand("");
+        } else {
+            historyIndex.current = next;
+            setCommand(entries[next]);
+        }
     }
 
     return (
@@ -53,8 +87,11 @@ export function TerminalPanel({ cwd, sandboxState, width, onClose }: { cwd: stri
             className="flex h-full min-h-0 shrink-0 flex-col bg-surface-container-lowest text-on-surface shadow-[-10px_0_28px_rgba(0,0,0,0.18)]"
             aria-label="终端"
         >
-            <div className="flex h-9 shrink-0 items-center justify-between border-b border-outline-variant/30 px-space-sm font-label-sm text-label-sm">
-                <span className="min-w-0 truncate" title={cwd}>终端 · {cwd}</span>
+            <div className="flex h-9 shrink-0 items-center justify-between gap-space-xs border-b border-outline-variant/30 px-space-sm font-label-sm text-label-sm">
+                <span className="min-w-0 flex-1 truncate" title={cwd}>终端 · {cwd}</span>
+                <button type="button" onClick={restart} disabled={starting} title="重启终端" aria-label="重启终端" className="flex h-6 w-6 items-center justify-center rounded hover:bg-surface-container-high disabled:opacity-50">
+                    <Icon name="restart_alt" className="text-[15px]" />
+                </button>
                 <button type="button" onClick={onClose} className="rounded px-2 py-1 hover:bg-surface-container-high" aria-label="关闭终端">×</button>
             </div>
             <div ref={outputRef} onClick={() => inputRef.current?.focus()} className="min-h-0 flex-1 cursor-text overflow-auto p-space-sm font-code-sm text-code-sm">
@@ -62,8 +99,12 @@ export function TerminalPanel({ cwd, sandboxState, width, onClose }: { cwd: stri
                 {running ? (
                     <form onSubmit={submit} className="flex min-w-0 items-baseline gap-2">
                         <span className="shrink-0">$</span>
-                        <input ref={inputRef} autoFocus value={command} onChange={(event) => setCommand(event.target.value)} aria-label="终端命令" className="min-w-0 flex-1 bg-transparent text-on-surface outline-none" autoComplete="off" spellCheck={false} />
+                        <input ref={inputRef} autoFocus value={command} onChange={(event) => setCommand(event.target.value)} onKeyDown={onKeyDown} aria-label="终端命令；上下方向键浏览历史命令" className="min-w-0 flex-1 bg-transparent text-on-surface outline-none" autoComplete="off" spellCheck={false} />
                     </form>
+                ) : !starting ? (
+                    <button type="button" onClick={restart} className="mt-space-sm rounded bg-surface-container px-space-md py-1 font-label-sm text-label-sm text-on-surface hover:bg-surface-container-high">
+                        重新启动终端
+                    </button>
                 ) : null}
             </div>
         </aside>

@@ -62,7 +62,7 @@ export function StatusBar({ sandbox, sandboxStatus, connection }: StatusBarProps
                 {sandboxStatus ? (
                     <>
                         <span className="text-outline">|</span>
-                        <a href="#/settings" title={sandboxStatus.detail || "在设置中管理命令隔离"} className="hover:text-on-surface">{sandboxLabel(sandbox)}</a>
+                        <a href="#/settings?section=permissions" title={sandboxStatus.detail || "在设置中管理命令隔离"} className="hover:text-on-surface">{sandboxLabel(sandbox)}</a>
                     </>
                 ) : null}
             </div>

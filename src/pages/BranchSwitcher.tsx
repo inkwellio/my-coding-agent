@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../components/Icon";
 import { notifyHeadChanged, relativeTime } from "../git/format";
 import type { GitBranches, GitCheckoutRequest } from "../git/types";
@@ -19,6 +19,9 @@ export function BranchSwitcher({ onClose }: { onClose: () => void }) {
     const [notice, setNotice] = useState("");
     const [pending, setPending] = useState<GitCheckoutRequest | null>(null);
     const agentRunning = engine.engine === "chatting";
+    const rootRef = useRef<HTMLDivElement>(null);
+    const listRef = useRef<HTMLDivElement>(null);
+    const [highlight, setHighlight] = useState(0);
 
     const load = useCallback(async () => {
         if (!desktop?.listGitBranches) {
@@ -44,11 +47,27 @@ export function BranchSwitcher({ onClose }: { onClose: () => void }) {
 
     useEffect(() => {
         const onKey = (event: KeyboardEvent) => {
-            if (event.key === "Escape") onClose();
+            if (event.key !== "Escape") return;
+            // Esc backs out of the uncommitted-changes prompt before it closes the panel.
+            if (pending) {
+                setPending(null);
+                setError("");
+            } else {
+                onClose();
+            }
+        };
+        const onPointerDown = (event: MouseEvent) => {
+            const target = event.target instanceof Element ? event.target : null;
+            if (!target || rootRef.current?.contains(target) || target.closest('a[href="#/branch"]')) return;
+            onClose();
         };
         window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
-    }, [onClose]);
+        document.addEventListener("mousedown", onPointerDown);
+        return () => {
+            window.removeEventListener("keydown", onKey);
+            document.removeEventListener("mousedown", onPointerDown);
+        };
+    }, [onClose, pending]);
 
     const needle = query.trim().toLowerCase();
     const local = useMemo(
@@ -61,6 +80,26 @@ export function BranchSwitcher({ onClose }: { onClose: () => void }) {
     );
     const newName = query.trim();
     const canCreate = Boolean(data?.ok && newName && !data.local.some((branch) => branch.name === newName));
+    // Rows in display order, so arrow keys and Enter act on what the highlight shows.
+    const items = useMemo<GitCheckoutRequest[]>(() => [
+        ...(canCreate ? [{ name: newName, create: true }] : []),
+        ...local.map((branch) => ({ name: branch.name })),
+        ...remote.map((branch) => ({ name: branch.name, remote: true })),
+    ], [canCreate, newName, local, remote]);
+    const firstLocal = canCreate && local.length ? 1 : 0;
+
+    useEffect(() => {
+        setHighlight(firstLocal);
+    }, [needle, data, firstLocal]);
+
+    useEffect(() => {
+        listRef.current?.querySelector('[data-highlighted="true"]')?.scrollIntoView({ block: "nearest" });
+    }, [highlight]);
+
+    const isHighlighted = (request: GitCheckoutRequest) => {
+        const item = items[highlight];
+        return Boolean(item && item.name === request.name && Boolean(item.create) === Boolean(request.create) && Boolean(item.remote) === Boolean(request.remote));
+    };
 
     async function checkout(request: GitCheckoutRequest) {
         if (!desktop?.checkoutGitBranch || busy) return;
@@ -123,7 +162,7 @@ export function BranchSwitcher({ onClose }: { onClose: () => void }) {
     const current = data?.local.find((branch) => branch.current);
 
     return (
-        <div className="fixed bottom-8 left-64 z-[60] w-[380px] max-w-[calc(100vw-18rem)] overflow-hidden rounded-xl bg-surface-container-low shadow-2xl">
+        <div ref={rootRef} role="dialog" aria-label="切换分支" className="fixed left-1/2 top-12 z-[60] w-[420px] max-w-[calc(100vw-2rem)] -translate-x-1/2 overflow-hidden rounded-xl bg-surface-container-low shadow-2xl">
             <div className="h-1 bg-gradient-to-r from-primary via-secondary to-primary-container" />
             <div className="flex items-center justify-between px-space-md pb-2 pt-space-md">
                 <div className="flex items-center gap-2">
@@ -153,18 +192,25 @@ export function BranchSwitcher({ onClose }: { onClose: () => void }) {
                         value={query}
                         onChange={(event) => setQuery(event.target.value)}
                         onKeyDown={(event) => {
-                            if (event.key !== "Enter" || event.nativeEvent.isComposing || disabled) return;
+                            if (event.nativeEvent.isComposing) return;
+                            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                                event.preventDefault();
+                                if (!items.length) return;
+                                const step = event.key === "ArrowDown" ? 1 : -1;
+                                setHighlight((current) => (current + step + items.length) % items.length);
+                                return;
+                            }
+                            if (event.key !== "Enter" || disabled) return;
                             event.preventDefault();
-                            if (local[0]) choose({ name: local[0].name });
-                            else if (canCreate) choose({ name: newName, create: true });
-                            else if (remote[0]) choose({ name: remote[0].name, remote: true });
+                            const item = items[highlight];
+                            if (item) choose(item);
                         }}
-                        placeholder="搜索分支或输入新分支名…"
+                        placeholder="搜索分支或输入新分支名，↑↓ 选择，Enter 切换"
                         className="w-full bg-transparent font-body-sm text-body-sm text-on-surface outline-none placeholder:text-outline/70"
                     />
                 </label>
             </div>
-            <div className="flex max-h-72 flex-col gap-1 overflow-y-auto px-space-xs py-1.5">
+            <div ref={listRef} className="flex max-h-72 flex-col gap-1 overflow-y-auto px-space-xs py-1.5">
                 {busy === "load" && !data ? <p className="px-2 py-1.5 font-body-sm text-body-sm text-outline">正在读取分支…</p> : null}
                 {data?.ok ? (
                     <>
@@ -190,8 +236,10 @@ export function BranchSwitcher({ onClose }: { onClose: () => void }) {
                     <button
                         type="button"
                         disabled={disabled}
+                        data-highlighted={isHighlighted({ name: newName, create: true })}
+                        onMouseEnter={() => setHighlight(0)}
                         onClick={() => choose({ name: newName, create: true })}
-                        className="mx-1 mt-1 flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-on-surface transition-colors hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-50"
+                        className={`mx-1 mt-1 flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-on-surface transition-colors hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-50 ${isHighlighted({ name: newName, create: true }) ? "bg-surface-container-high ring-1 ring-primary/40" : ""}`}
                     >
                         <Icon name="add" className="text-[16px] text-primary" />
                         <span className="min-w-0 truncate font-body-sm text-body-sm">
@@ -202,15 +250,18 @@ export function BranchSwitcher({ onClose }: { onClose: () => void }) {
                 {local.length ? (
                     <div className="px-2 pb-0.5 pt-2.5 font-label-xs font-semibold uppercase tracking-wider text-outline">本地分支 LOCAL BRANCHES</div>
                 ) : null}
-                {local.map((branch) => {
+                {local.map((branch, index) => {
                     const track = trackLabel(branch.ahead, branch.behind);
+                    const highlighted = isHighlighted({ name: branch.name });
                     return (
                         <button
                             key={branch.name}
                             type="button"
                             disabled={disabled}
+                            data-highlighted={highlighted}
+                            onMouseEnter={() => setHighlight((canCreate ? 1 : 0) + index)}
                             onClick={() => choose({ name: branch.name })}
-                            className={`mx-1 flex items-center justify-between rounded-lg px-2 py-1.5 text-on-surface transition-colors hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-50 ${pending?.name === branch.name ? "bg-surface-container-high" : ""}`}
+                            className={`mx-1 flex items-center justify-between rounded-lg px-2 py-1.5 text-on-surface transition-colors hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-50 ${highlighted || pending?.name === branch.name ? "bg-surface-container-high" : ""} ${highlighted ? "ring-1 ring-primary/40" : ""}`}
                         >
                             <span className="flex min-w-0 items-center gap-2">
                                 <Icon name="call_split" className="text-[16px] text-outline" />
@@ -227,14 +278,16 @@ export function BranchSwitcher({ onClose }: { onClose: () => void }) {
                 {remote.length ? (
                     <div className="px-2 pb-0.5 pt-2.5 font-label-xs font-semibold uppercase tracking-wider text-outline">远程分支 REMOTE BRANCHES</div>
                 ) : null}
-                {remote.map((branch) => (
+                {remote.map((branch, index) => (
                     <button
                         key={branch.name}
                         type="button"
                         disabled={disabled}
                         title="检出为本地跟踪分支"
+                        data-highlighted={isHighlighted({ name: branch.name, remote: true })}
+                        onMouseEnter={() => setHighlight((canCreate ? 1 : 0) + local.length + index)}
                         onClick={() => choose({ name: branch.name, remote: true })}
-                        className={`group mx-1 rounded-lg px-2 py-1.5 text-outline transition-colors hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-50 ${pending?.name === branch.name ? "bg-surface-container-high" : ""}`}
+                        className={`group mx-1 rounded-lg px-2 py-1.5 text-outline transition-colors hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-50 ${isHighlighted({ name: branch.name, remote: true }) || pending?.name === branch.name ? "bg-surface-container-high" : ""} ${isHighlighted({ name: branch.name, remote: true }) ? "ring-1 ring-primary/40" : ""}`}
                     >
                         <span className="flex items-center justify-between">
                             <span className="flex min-w-0 items-center gap-2">

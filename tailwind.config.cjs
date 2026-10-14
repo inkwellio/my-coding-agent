@@ -63,6 +63,7 @@ const config = {
                     "chip-hover": "#505050",
                 },
                 divider: "#ffffff",
+                success: "#10b981",
                 warning: "#ffb95f",
                 "window-close": "#c42b1c",
             },
@@ -174,6 +175,7 @@ const lightPalette = {
     "composer-chip": "#eceef3",
     "composer-chip-hover": "#dadde4",
     divider: "#000000",
+    success: "#047857",
     warning: "#8a5100",
     "window-close": "#c42b1c",
 };

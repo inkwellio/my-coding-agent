@@ -28,6 +28,7 @@ export interface PiDesktopApi {
     listWorkspaces: () => Promise<WorkspaceState>;
     addWorkspace: () => Promise<WorkspaceActionResult>;
     switchWorkspace: (cwd: string) => Promise<WorkspaceActionResult>;
+    removeWorkspace: (cwd: string) => Promise<WorkspaceActionResult>;
     getGitStatus: () => Promise<GitStatus>;
     getGitDiff: (filePath: string) => Promise<GitResult & { text?: string }>;
     stageGitFile: (filePath: string | null, selected: boolean) => Promise<GitStatus>;

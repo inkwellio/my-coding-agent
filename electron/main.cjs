@@ -534,6 +534,22 @@ ipcMain.handle("workspaces:add", async (event) => {
 
 ipcMain.handle("workspaces:switch", async (event, cwd) => switchWindowWorkspace(windowFromEvent(event), cwd));
 
+ipcMain.handle("workspaces:remove", async (_event, cwd) => {
+    const store = await getWorkspaceStore();
+    // Another window may have this workspace open; only the list entry is removed, never files.
+    const key = (value) => (process.platform === "win32" ? String(value).toLowerCase() : String(value));
+    if ([...sessions.values()].some((session) => key(session.snapshot().cwd) === key(cwd))) {
+        return { ok: false, state: store.snapshot(), message: "这个工作区正在某个窗口中打开，请先切换到其他工作区" };
+    }
+    try {
+        const state = store.remove(cwd);
+        broadcast("workspaces:changed", state);
+        return { ok: true, state };
+    } catch (error) {
+        return { ok: false, state: store.snapshot(), message: error instanceof Error ? error.message : "移除工作区失败" };
+    }
+});
+
 function gitCwd(event) {
     return sessions.get(event.sender.id)?.snapshot().cwd || null;
 }

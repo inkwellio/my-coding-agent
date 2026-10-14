@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld("piDesktop", {
     listWorkspaces: () => ipcRenderer.invoke("workspaces:list"),
     addWorkspace: () => ipcRenderer.invoke("workspaces:add"),
     switchWorkspace: (cwd) => ipcRenderer.invoke("workspaces:switch", cwd),
+    removeWorkspace: (cwd) => ipcRenderer.invoke("workspaces:remove", cwd),
     getGitStatus: () => ipcRenderer.invoke("git:status"),
     getGitDiff: (filePath) => ipcRenderer.invoke("git:diff", filePath),
     stageGitFile: (filePath, selected) => ipcRenderer.invoke("git:stage", filePath, selected),

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { chooseModel, modelChoiceLabel, useCredentialBoard } from "../credentials/board";
+import { showToast } from "./ShortcutToast";
 import { ModelPicker } from "./ui/ModelPicker";
 
 interface ModelSelectProps {
@@ -10,7 +11,12 @@ interface ModelSelectProps {
 async function choosePair(pair: string) {
     const slash = pair.indexOf("/");
     if (slash <= 0) return;
-    await chooseModel(pair.slice(0, slash), pair.slice(slash + 1));
+    try {
+        const result = await chooseModel(pair.slice(0, slash), pair.slice(slash + 1));
+        if (!result.ok) showToast(result.message || "切换模型失败");
+    } catch (error) {
+        showToast(error instanceof Error ? error.message : "切换模型失败");
+    }
 }
 
 export function ModelSelect({ variant, fallback = "未选择模型" }: ModelSelectProps) {

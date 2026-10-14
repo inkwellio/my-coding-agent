@@ -3,6 +3,7 @@ import { Icon } from "../components/Icon";
 import { ModelSelect } from "../components/ModelSelect";
 import { useCredentialBoard } from "../credentials/board";
 import { thinkingLevelLabel, useModelSettings } from "../credentials/modelSettings";
+import { readLocationQuery } from "../router";
 import { useRpc } from "../rpc/RpcProvider";
 import { applyThemePreset, readThemePreset, type ThemePreset } from "../theme";
 import { KeybindingsPanel } from "./KeybindingsPanel";
@@ -17,6 +18,14 @@ function compactTokens(tokens: number) {
 }
 
 type SettingsDomain = "appearance" | "models" | "permissions" | "keybindings" | "plugins";
+
+const SETTINGS_DOMAINS: SettingsDomain[] = ["appearance", "models", "permissions", "keybindings", "plugins"];
+
+/** `#/settings?section=permissions` opens that section directly (e.g. from the status bar). */
+function domainFromLocation(): SettingsDomain {
+    const section = readLocationQuery().get("section");
+    return SETTINGS_DOMAINS.includes(section as SettingsDomain) ? section as SettingsDomain : "appearance";
+}
 
 const themePresetMeta: Record<ThemePreset, { label: string; badge: string; description: string }> = {
     "deep-charcoal": {
@@ -56,8 +65,20 @@ export function SettingsPage({ sandboxController }: { sandboxController: Sandbox
         chooseThinkingLevel,
     } = useModelSettings(modelKey);
     const contextPlaceholder = modelSettingsAvailable ? "读取中…" : "仅在桌面窗口中可用";
-    const [activeDomain, setActiveDomain] = useState<SettingsDomain>("appearance");
+    const [activeDomain, setActiveDomainState] = useState<SettingsDomain>(domainFromLocation);
     const contentScrollerRef = useRef<HTMLDivElement>(null);
+
+    function setActiveDomain(domain: SettingsDomain) {
+        setActiveDomainState(domain);
+        // replaceState keeps the section linkable without a history entry per click.
+        window.history.replaceState(null, "", `#/settings?section=${domain}`);
+    }
+
+    useEffect(() => {
+        const sync = () => setActiveDomainState(domainFromLocation());
+        window.addEventListener("hashchange", sync);
+        return () => window.removeEventListener("hashchange", sync);
+    }, []);
 
     useEffect(() => {
         contentScrollerRef.current?.scrollTo({ top: 0 });

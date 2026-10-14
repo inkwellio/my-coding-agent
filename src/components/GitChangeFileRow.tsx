@@ -39,6 +39,7 @@ export const GitChangeFileRow = memo(function GitChangeFileRow({
         >
             <StageCheckbox
                 checked={file.staged}
+                disabled={stageBusy}
                 onChange={onCheck}
                 aria-label={`${file.staged ? "取消暂存" : "暂存"} ${file.path}`}
             />

@@ -7,15 +7,21 @@ interface RpcContextValue {
     hydrated: boolean;
     blocks: TranscriptBlock[];
     notice: string | null;
+    /** True when the notice is about missing or rejected credentials. */
+    noticeNeedsCredentials: boolean;
+    dismissNotice: () => void;
     sessions: SessionSummary[];
     activeSessionId: string | null;
     sessionBusy: boolean;
     workspaceState: WorkspaceState;
     workspaceBusy: boolean;
     addWorkspace: () => Promise<boolean>;
+    /** Removes a workspace from the list (never its files); resolves with the failure reason, if any. */
+    removeWorkspace: (cwd: string) => Promise<{ ok: boolean; message?: string }>;
     switchWorkspace: (cwd: string) => Promise<boolean>;
     changeSession: (sessionId: string | null) => Promise<boolean>;
     sendPrompt: (text: string) => Promise<boolean>;
+    abort: () => Promise<boolean>;
 }
 
 const offlineStatus = (): RpcStatus => ({
@@ -45,7 +51,11 @@ export function RpcProvider({ children }: { children: ReactNode }) {
     });
     const [hydrated, setHydrated] = useState(false);
     const [blocks, setBlocks] = useState<TranscriptBlock[]>([]);
-    const [notice, setNotice] = useState<string | null>(null);
+    const [noticeState, setNoticeState] = useState<{ text: string; credentials: boolean } | null>(null);
+    const setNotice = useCallback((text: string | null, credentials = false) => {
+        setNoticeState(text ? { text, credentials } : null);
+    }, []);
+    const dismissNotice = useCallback(() => setNoticeState(null), []);
     const [sessions, setSessions] = useState<SessionSummary[]>([]);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const [sessionBusy, setSessionBusy] = useState(false);
@@ -195,7 +205,7 @@ export function RpcProvider({ children }: { children: ReactNode }) {
         return desktop.onCredentialStatus((payload) => {
             setStatus((current) => ({ ...current, credentials: payload.summary }));
             if (payload.summary.configured) {
-                setNotice((current) => (current && current.includes("凭据") ? null : current));
+                setNoticeState((current) => (current?.credentials ? null : current));
             }
         });
     }, []);
@@ -210,7 +220,7 @@ export function RpcProvider({ children }: { children: ReactNode }) {
             return false;
         }
         if (!status.credentials.configured) {
-            setNotice("模型凭据未配置。密钥只留在主进程 AuthStorage，请打开凭据页。");
+            setNotice("模型凭据未配置。密钥只留在主进程 AuthStorage，请打开凭据页。", true);
             return false;
         }
         // Show the user bubble before the request: the engine can stream the reply before the ack.
@@ -229,7 +239,7 @@ export function RpcProvider({ children }: { children: ReactNode }) {
         if (!result.ok) {
             withdraw();
             if (result.code === "credentials") {
-                setNotice(result.message ? `模型凭据不可用：${result.message}` : "模型凭据未配置。请打开凭据页。");
+                setNotice(result.message ? `模型凭据不可用：${result.message}` : "模型凭据未配置。请打开凭据页。", true);
                 return false;
             }
             setNotice(result.message || "发送失败");
@@ -238,6 +248,19 @@ export function RpcProvider({ children }: { children: ReactNode }) {
         setNotice(null);
         return true;
     }, [status.credentials.configured, sessionBusy, workspaceBusy]);
+
+    const abort = useCallback(async () => {
+        const desktop = window.piDesktop;
+        if (!desktop?.abortPrompt) return false;
+        try {
+            const result = await desktop.abortPrompt();
+            if (!result.ok) setNotice(result.message || "中止失败");
+            return result.ok;
+        } catch (error) {
+            setNotice(error instanceof Error ? error.message : "中止失败");
+            return false;
+        }
+    }, [setNotice]);
 
     const changeSession = useCallback(async (sessionId: string | null) => {
         const desktop = window.piDesktop;
@@ -263,6 +286,23 @@ export function RpcProvider({ children }: { children: ReactNode }) {
         } finally {
             workspaceAction.current = false;
             setWorkspaceBusy(false);
+        }
+    }, []);
+
+    const removeWorkspace = useCallback(async (cwd: string) => {
+        const desktop = window.piDesktop;
+        // An already-open window keeps its old preload until the app restarts.
+        if (!desktop?.removeWorkspace) return { ok: false, message: "请完全退出并重新启动应用后再移除工作区" };
+        if (workspaceAction.current) return { ok: false, message: "正在处理其他工作区操作" };
+        workspaceAction.current = true;
+        try {
+            const result = await desktop.removeWorkspace(cwd);
+            if (result.state) setWorkspaceState(result.state);
+            return result.ok ? { ok: true } : { ok: false, message: result.message || "移除工作区失败" };
+        } catch (error) {
+            return { ok: false, message: error instanceof Error ? error.message : "移除工作区失败" };
+        } finally {
+            workspaceAction.current = false;
         }
     }, []);
 
@@ -294,8 +334,12 @@ export function RpcProvider({ children }: { children: ReactNode }) {
     }, [status.cwd]);
 
     const value = useMemo(
-        () => ({ status, hydrated, blocks, notice, sessions, activeSessionId, sessionBusy, workspaceState, workspaceBusy, addWorkspace, switchWorkspace, changeSession, sendPrompt }),
-        [status, hydrated, blocks, notice, sessions, activeSessionId, sessionBusy, workspaceState, workspaceBusy, addWorkspace, switchWorkspace, changeSession, sendPrompt],
+        () => ({
+            status, hydrated, blocks, notice: noticeState?.text ?? null, noticeNeedsCredentials: Boolean(noticeState?.credentials), dismissNotice,
+            sessions, activeSessionId, sessionBusy, workspaceState, workspaceBusy,
+            addWorkspace, removeWorkspace, switchWorkspace, changeSession, sendPrompt, abort,
+        }),
+        [status, hydrated, blocks, noticeState, dismissNotice, sessions, activeSessionId, sessionBusy, workspaceState, workspaceBusy, addWorkspace, removeWorkspace, switchWorkspace, changeSession, sendPrompt, abort],
     );
 
     return <RpcContext.Provider value={value}>{children}</RpcContext.Provider>;

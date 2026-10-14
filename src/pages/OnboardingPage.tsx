@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Icon } from "../components/Icon";
 import { useRpc } from "../rpc/RpcProvider";
 
+const OPEN_SHORTCUT = /Mac/i.test(navigator.userAgent) ? "⌘ O" : "Ctrl O";
+
 function workspaceName(cwd: string) {
     return cwd.split(/[\\/]/).filter(Boolean).at(-1) || cwd;
 }
@@ -63,7 +65,7 @@ export function OnboardingPage() {
                                 <Icon name="folder_open" className="text-[22px]" />
                             </span>
                             <kbd className="rounded bg-surface-container-lowest px-1.5 py-0.5 font-code-sm text-code-sm text-on-surface-variant">
-                                Ctrl O
+                                {OPEN_SHORTCUT}
                             </kbd>
                         </span>
                         <span className="mb-space-xs font-headline-sm text-headline-sm text-on-surface transition-colors group-hover:text-primary">

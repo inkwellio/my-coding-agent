@@ -85,6 +85,10 @@ export function ModelPicker({ tone, configured, value, label, title, onPick }: M
                 setOpen(false);
                 return;
             }
+            if (event.key === "Tab") {
+                setOpen(false);
+                return;
+            }
             if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
             const options = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]') ?? []);
             if (!options.length) return;
@@ -102,8 +106,11 @@ export function ModelPicker({ tone, configured, value, label, title, onPick }: M
     }, [open]);
 
     async function pick(next: string) {
-        if (next !== value) await onPick(next);
-        setOpen(false);
+        try {
+            if (next !== value) await onPick(next);
+        } finally {
+            setOpen(false);
+        }
     }
 
     return (

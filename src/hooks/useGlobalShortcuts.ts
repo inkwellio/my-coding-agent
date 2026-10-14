@@ -93,6 +93,9 @@ export function useGlobalShortcuts(enabled: boolean) {
             if (event.defaultPrevented || event.repeat || event.isComposing || isShortcutCapture()) return;
             const combo = comboFromEvent(event);
             if (!combo) return;
+            // Tab combos move focus between controls; only claim them on the page or the composer.
+            const target = event.target instanceof HTMLElement ? event.target : null;
+            if (combo.split("+").includes("tab") && target && target !== document.body && !target.closest("[data-shortcut-tab]")) return;
             const bindings = getKeybindings();
             const action = (Object.keys(bindings) as ShortcutAction[]).find((id) => bindings[id] === combo);
             if (!action) return;

@@ -61,6 +61,19 @@ function createWorkspaceStore(filePath, fallbackCwd) {
             }
             return candidate;
         },
+        remove(value) {
+            const index = paths.findIndex((entry) => typeof value === "string" && pathKey(entry) === pathKey(value));
+            if (index === -1) throw new Error("工作区不存在");
+            if (pathKey(paths[index]) === pathKey(activeCwd)) throw new Error("不能移除当前打开的工作区");
+            const [removed] = paths.splice(index, 1);
+            try {
+                persist();
+            } catch (error) {
+                paths.splice(index, 0, removed);
+                throw error;
+            }
+            return snapshot();
+        },
         activate(value) {
             const candidate = paths.find((entry) => typeof value === "string" && pathKey(entry) === pathKey(value));
             if (!candidate || !directoryPath(candidate)) throw new Error("工作区不存在，请重新添加目录");
