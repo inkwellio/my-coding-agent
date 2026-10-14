@@ -159,7 +159,7 @@ export function MarkdownContent({ text }: { text: string }) {
         }
     }, [text]);
     return (
-        <div className="assistant-markdown select-text break-words font-body-md text-body-md leading-relaxed text-on-surface">
+        <div className="assistant-markdown select-text break-words text-body-md leading-relaxed text-on-surface">
             {tokens ? blocks(tokens) : <p className="whitespace-pre-wrap">{text}</p>}
         </div>
     );

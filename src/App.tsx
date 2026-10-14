@@ -6,7 +6,7 @@ import { useSandbox } from "./hooks/useSandbox";
 import { StatusBar } from "./components/StatusBar";
 import { TitleBar } from "./components/TitleBar";
 import { BranchSwitcher } from "./pages/BranchSwitcher";
-import { CredentialsFrame } from "./pages/CredentialsFrame";
+import { CredentialsPage } from "./pages/CredentialsPage";
 import { DiffPage } from "./pages/DiffPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
@@ -22,7 +22,7 @@ export default function App() {
     const [route, setRoute] = useState<Route>(readRoute);
     const [underlay, setUnderlay] = useState<Route>(() => {
         const initial = readRoute();
-        return initial === "branch" || initial === "onboarding" || initial === "credentials" ? "workspace" : initial;
+        return initial === "branch" || initial === "onboarding" ? "workspace" : initial;
     });
     const [terminalOpen, setTerminalOpen] = useState(false);
 
@@ -39,7 +39,7 @@ export default function App() {
     }, []);
 
     useEffect(() => {
-        if (route !== "branch" && route !== "onboarding" && route !== "credentials") setUnderlay(route);
+        if (route !== "branch" && route !== "onboarding") setUnderlay(route);
     }, [route]);
 
     useGlobalShortcuts(route !== "onboarding" && route !== "credentials" && route !== "branch" && sandbox !== "enabling");
@@ -63,13 +63,10 @@ export default function App() {
         );
     }
 
-    if (route === "credentials") {
-        return <CredentialsFrame />;
-    }
-
     const page = underlay === "diff" ? <DiffPage />
         : underlay === "history" ? <HistoryPage />
         : underlay === "settings" ? <SettingsPage sandboxController={sandboxController} />
+        : underlay === "credentials" ? <CredentialsPage />
         : <WorkspacePage />;
 
     return (

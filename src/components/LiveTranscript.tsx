@@ -12,11 +12,7 @@ function AssistantBlock({ block }: { block: Extract<TranscriptBlock, { kind: "as
                     正在回复…
                 </span>
             ) : null}
-            {block.text ? (
-                <MarkdownContent text={block.text} />
-            ) : block.pending ? (
-                <span className="text-on-surface-variant">…</span>
-            ) : null}
+            {block.text ? <MarkdownContent text={block.text} /> : null}
         </article>
     );
 }
@@ -64,8 +60,8 @@ function ToolGroup({ group }: { group: Extract<DisplayBlock, { kind: "tool_group
 
 function UserBlock({ block }: { block: Extract<TranscriptBlock, { kind: "user" }> }) {
     return (
-        <article className="group relative w-full">
-            <div className="select-text whitespace-pre-wrap rounded-2xl border border-composer-border/80 bg-composer-surface px-space-lg py-space-md font-body-md text-body-md leading-relaxed text-composer-text shadow-sm">
+        <article className="group relative flex w-full justify-end">
+            <div className="max-w-[85%] select-text whitespace-pre-wrap break-words rounded-2xl border border-composer-border/80 bg-composer-surface px-space-lg py-space-md font-body-md text-body-md leading-relaxed text-composer-text shadow-sm">
                 {block.text}
             </div>
         </article>

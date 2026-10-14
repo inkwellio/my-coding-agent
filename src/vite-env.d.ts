@@ -10,6 +10,7 @@ export interface PiDesktopApi {
     minimize: () => void;
     toggleMaximize: () => void;
     close: () => void;
+    setWindowTheme: (theme: "dark" | "light") => void;
     getSandboxStatus: () => Promise<SandboxSnapshot>;
     setSandboxEnabled: (enabled: boolean) => Promise<SandboxActionResult>;
     installSandbox: () => Promise<SandboxActionResult>;

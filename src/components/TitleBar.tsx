@@ -47,7 +47,7 @@ function WindowControl({
             onClick={onClick}
             className={`titlebar-no-drag flex h-10 w-11 shrink-0 items-center justify-center overflow-hidden text-on-surface-variant transition-colors ${
                 danger
-                    ? "hover:bg-[#c42b1c] hover:text-white"
+                    ? "hover:bg-window-close hover:text-white"
                     : "hover:bg-surface-container-high hover:text-on-surface"
             }`}
         >

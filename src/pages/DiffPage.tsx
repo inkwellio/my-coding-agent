@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DiffLines } from "../components/DiffLines";
 import { GitChangeFileRow } from "../components/GitChangeFileRow";
 import { Icon } from "../components/Icon";
 import { withStableFileOrder } from "../git/fileOrder";
-import { diffTone, GIT_HEAD_CHANGED } from "../git/format";
+import { GIT_HEAD_CHANGED } from "../git/format";
 import type { GitStatus } from "../git/types";
 import { useRpc } from "../rpc/RpcProvider";
 
@@ -212,9 +213,7 @@ export function DiffPage() {
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto bg-surface py-space-sm font-code-sm text-code-sm select-text">
                     {selectedPath ? (
-                        diffText !== null ? diffText.split("\n").map((line, index) => (
-                            <div key={index} className={`whitespace-pre px-space-md ${diffTone(line)}`}>{line || " "}</div>
-                        )) : (
+                        diffText !== null ? <DiffLines text={diffText} /> : (
                             <p className="px-space-md text-on-surface-variant/60">正在读取差异…</p>
                         )
                     ) : (

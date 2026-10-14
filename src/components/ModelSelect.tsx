@@ -68,7 +68,7 @@ export function ModelSelect({ variant, fallback = "未选择模型" }: ModelSele
             return (
                 <span className="flex max-w-[18rem] flex-col justify-center leading-none">
                     {picker}
-                    <span className="px-space-sm font-mono text-[10px] text-outline">{flashPair}</span>
+                    <span className="px-space-sm font-code-xs text-code-xs text-outline">{flashPair}</span>
                 </span>
             );
         }

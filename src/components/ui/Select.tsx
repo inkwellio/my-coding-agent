@@ -65,7 +65,7 @@ export function Select<T extends string>({ label, value, options, onChange, disa
 
     return (
         <div ref={rootRef} className="relative space-y-1">
-            <span id={labelId} className="block text-xs text-on-surface-variant">{label}</span>
+            <span id={labelId} className="block font-label-sm text-label-sm text-on-surface-variant">{label}</span>
             <button
                 ref={triggerRef}
                 type="button"
@@ -80,7 +80,7 @@ export function Select<T extends string>({ label, value, options, onChange, disa
                         setOpen(true);
                     }
                 }}
-                className={`flex h-10 w-full items-center gap-2.5 rounded-lg border bg-surface-container-lowest px-3 text-left text-sm text-on-surface outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                className={`flex h-10 w-full items-center gap-2.5 rounded-lg border bg-surface-container-lowest px-3 text-left font-body-md text-body-md text-on-surface outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                     open ? "border-primary" : "border-outline-variant/40 hover:border-outline-variant focus-visible:border-primary"
                 }`}
             >
@@ -118,9 +118,9 @@ export function Select<T extends string>({ label, value, options, onChange, disa
                                     />
                                 ) : null}
                                 <span className="flex min-w-0 flex-1 flex-col">
-                                    <span className={`text-sm ${active ? "font-semibold text-primary" : "text-on-surface"}`}>{option.label}</span>
+                                    <span className={`font-body-md text-body-md ${active ? "font-semibold text-primary" : "text-on-surface"}`}>{option.label}</span>
                                     {option.description ? (
-                                        <span className="text-xs leading-snug text-on-surface-variant">{option.description}</span>
+                                        <span className="font-body-xs text-body-xs text-on-surface-variant">{option.description}</span>
                                     ) : null}
                                 </span>
                                 {active ? <Icon name="check" className="mt-px shrink-0 text-[16px] text-primary" /> : null}

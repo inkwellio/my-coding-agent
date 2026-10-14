@@ -195,6 +195,25 @@ async function switchWindowWorkspaceNow(win, cwd) {
     }
 }
 
+// Matches the `surface` token of each theme so a new window does not flash another color.
+const WINDOW_BACKGROUNDS = { dark: "#101418", light: "#f7f8fb" };
+let windowTheme;
+
+function windowThemePath() {
+    return path.join(app.getPath("userData"), "window-theme.json");
+}
+
+function readWindowTheme() {
+    if (windowTheme) return windowTheme;
+    try {
+        const saved = JSON.parse(fs.readFileSync(windowThemePath(), "utf8"))?.theme;
+        windowTheme = saved === "light" ? "light" : "dark";
+    } catch {
+        windowTheme = "dark";
+    }
+    return windowTheme;
+}
+
 const SHUTDOWN_TIMEOUT_MS = 15_000;
 
 /** A stuck cleanup step must not keep a window or the app open forever. */
@@ -214,7 +233,7 @@ function createWindow() {
         height: 900,
         minWidth: 1180,
         minHeight: 720,
-        backgroundColor: "#0b0e13",
+        backgroundColor: WINDOW_BACKGROUNDS[readWindowTheme()],
         title: "智能编程工作台",
         frame: false,
         autoHideMenuBar: true,
@@ -307,6 +326,17 @@ ipcMain.on("window:toggle-maximize", (event) => {
     else win.maximize();
 });
 ipcMain.on("window:close", (event) => windowFromEvent(event)?.close());
+ipcMain.on("window:set-theme", (event, theme) => {
+    if (theme !== "dark" && theme !== "light") return;
+    windowFromEvent(event)?.setBackgroundColor(WINDOW_BACKGROUNDS[theme]);
+    if (readWindowTheme() === theme) return;
+    windowTheme = theme;
+    try {
+        fs.writeFileSync(windowThemePath(), JSON.stringify({ theme }), "utf8");
+    } catch {
+        // The window still repaints now; only the next launch's first frame is affected.
+    }
+});
 
 ipcMain.handle("terminal:start", async (event) => {
     if (windowFromEvent(event)?.__piClosing || sandboxTasks.has(event.sender.id) || workspaceTasks.has(event.sender.id)) return { ok: false, message: "正在更新或关闭工作区" };

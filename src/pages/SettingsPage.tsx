@@ -195,15 +195,16 @@ export function SettingsPage({ sandboxController }: { sandboxController: Sandbox
                                         <Icon name="check" className="text-[11px] font-bold" />
                                     </span>
                                 ) : null}
-                                <div className="flex h-16 flex-col justify-between rounded bg-surface-container-lowest p-2">
+                                {/* Fixed swatch colors: the preview must show the dark theme even while the light theme is active. */}
+                                <div className="flex h-16 flex-col justify-between rounded border border-[#32353a] bg-[#0b0e13] p-2">
                                     <div className="flex gap-1">
                                         <span className="h-2 w-2 rounded-full bg-[#ff5f56]" />
                                         <span className="h-2 w-2 rounded-full bg-[#ffbd2e]" />
                                         <span className="h-2 w-2 rounded-full bg-[#27c93f]" />
                                     </div>
                                     <div className="flex items-center gap-1">
-                                        <span className="h-1.5 w-12 rounded bg-primary/70" />
-                                        <span className="h-1.5 w-6 rounded bg-secondary/50" />
+                                        <span className="h-1.5 w-12 rounded bg-[#bfc1ff]/70" />
+                                        <span className="h-1.5 w-6 rounded bg-[#7bd0ff]/50" />
                                     </div>
                                 </div>
                                 <div>
@@ -269,7 +270,7 @@ export function SettingsPage({ sandboxController }: { sandboxController: Sandbox
                             <ModelSelect variant="field" />
                             <p className="font-code-sm text-code-sm text-outline">
                                 保存 DeepSeek API Key 后，主进程会调用 set_model，切到 DeepSeek V4 Flash。
-                                {flashModelId ? <span className="mt-0.5 block font-mono text-[10px] text-on-surface-variant">deepseek/{flashModelId}</span> : null}
+                                {flashModelId ? <span className="mt-0.5 block font-code-xs text-code-xs text-on-surface-variant">deepseek/{flashModelId}</span> : null}
                             </p>
                             <a
                                 href="#/credentials"

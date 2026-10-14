@@ -129,10 +129,10 @@ export function BranchSwitcher({ onClose }: { onClose: () => void }) {
                 <div className="flex items-center gap-2">
                     <Icon name="fork_right" className="text-[18px] text-primary" />
                     <h3 className="font-headline-sm text-body-lg font-semibold tracking-tight text-on-surface">切换分支</h3>
-                    <span className="rounded bg-surface-container px-1.5 py-0.5 font-code-sm text-[10px] text-outline">GIT</span>
+                    <span className="rounded bg-surface-container px-1.5 py-0.5 font-code-xs text-code-xs text-outline">GIT</span>
                 </div>
                 <div className="flex items-center gap-1">
-                    <span className="select-none rounded bg-surface-container px-1.5 py-0.5 font-code-sm text-[11px] text-on-surface-variant">
+                    <span className="select-none rounded bg-surface-container px-1.5 py-0.5 font-code-xs text-code-xs text-on-surface-variant">
                         Esc
                     </span>
                     <button
@@ -175,9 +175,9 @@ export function BranchSwitcher({ onClose }: { onClose: () => void }) {
                                 <span className="truncate font-code-sm text-body-sm font-semibold text-primary">
                                     {data.detached ? `分离 HEAD · ${data.current}` : data.current}
                                 </span>
-                                <span className="rounded bg-primary/20 px-1 py-0.5 font-code-sm text-[10px] text-primary">HEAD</span>
+                                <span className="rounded bg-primary/20 px-1 py-0.5 font-code-xs text-code-xs text-primary">HEAD</span>
                                 {current && trackLabel(current.ahead, current.behind) ? (
-                                    <span className="rounded bg-surface-container px-1.5 py-0.5 font-code-sm text-[10px] text-secondary" title="相对上游分支领先/落后的提交数">
+                                    <span className="rounded bg-surface-container px-1.5 py-0.5 font-code-xs text-code-xs text-secondary" title="相对上游分支领先/落后的提交数">
                                         {trackLabel(current.ahead, current.behind)}
                                     </span>
                                 ) : null}
@@ -215,10 +215,10 @@ export function BranchSwitcher({ onClose }: { onClose: () => void }) {
                             <span className="flex min-w-0 items-center gap-2">
                                 <Icon name="call_split" className="text-[16px] text-outline" />
                                 <span className="truncate font-code-sm text-body-sm">{branch.name}</span>
-                                {branch.gone ? <span className="rounded bg-error-container/30 px-1 py-0.5 font-code-sm text-[10px] text-error" title="上游分支已被删除">上游已删除</span> : null}
+                                {branch.gone ? <span className="rounded bg-error-container/30 px-1 py-0.5 font-code-xs text-code-xs text-error" title="上游分支已被删除">上游已删除</span> : null}
                             </span>
                             <span className="flex shrink-0 items-center gap-2">
-                                {track ? <span className="rounded bg-surface-container px-1.5 py-0.5 font-code-sm text-[10px] text-secondary" title="相对上游分支领先/落后的提交数">{track}</span> : null}
+                                {track ? <span className="rounded bg-surface-container px-1.5 py-0.5 font-code-xs text-code-xs text-secondary" title="相对上游分支领先/落后的提交数">{track}</span> : null}
                                 <span className="font-label-xs text-outline">{relativeTime(branch.date)}</span>
                             </span>
                         </button>
@@ -241,7 +241,7 @@ export function BranchSwitcher({ onClose }: { onClose: () => void }) {
                                 <Icon name="cloud" className="text-[16px]" />
                                 <span className="truncate font-code-sm text-body-sm group-hover:text-on-surface-variant">{branch.name}</span>
                             </span>
-                            <span className="shrink-0 text-[11px] opacity-70">{relativeTime(branch.date)}</span>
+                            <span className="shrink-0 font-body-xs text-body-xs opacity-70">{relativeTime(branch.date)}</span>
                         </span>
                     </button>
                 ))}
@@ -257,7 +257,7 @@ export function BranchSwitcher({ onClose }: { onClose: () => void }) {
                             <span className="font-label-md text-label-md font-semibold tracking-tight text-error">
                                 有 {data.changes} 个未提交的更改
                             </span>
-                            <span className="mt-0.5 font-body-sm text-xs leading-snug text-on-surface-variant">
+                            <span className="mt-0.5 font-body-xs text-body-xs text-on-surface-variant">
                                 切换到 <span className="font-code-sm">{pending.name}</span> 时，不冲突的改动会被带过去；有冲突时 Git 会拒绝切换。也可以先把改动存入 stash。
                             </span>
                         </div>
@@ -285,7 +285,7 @@ export function BranchSwitcher({ onClose }: { onClose: () => void }) {
                             type="button"
                             disabled={busy !== null}
                             onClick={() => void checkout({ ...pending, stash: true })}
-                            className="ml-auto flex items-center gap-0.5 font-code-sm text-xs text-secondary hover:underline disabled:opacity-50"
+                            className="ml-auto flex items-center gap-0.5 font-code-sm text-code-sm text-secondary hover:underline disabled:opacity-50"
                         >
                             存入 stash 后切换
                             <Icon name="arrow_forward" className="text-[13px]" />
@@ -293,10 +293,10 @@ export function BranchSwitcher({ onClose }: { onClose: () => void }) {
                     </div>
                 </div>
             ) : null}
-            {agentRunning ? <p className="px-space-md pb-2 font-code-sm text-[11px] text-on-surface-variant">代理正在运行，完成或中止后才能切换分支。</p> : null}
-            {busy === "checkout" ? <p className="px-space-md pb-2 font-code-sm text-[11px] text-secondary">正在切换…</p> : null}
-            {error ? <p role="alert" className="whitespace-pre-wrap px-space-md pb-2 font-code-sm text-[11px] text-error">{error}</p> : null}
-            {notice ? <p role="status" className="px-space-md pb-2 font-code-sm text-[11px] text-secondary">{notice}</p> : null}
+            {agentRunning ? <p className="px-space-md pb-2 font-body-xs text-body-xs text-on-surface-variant">代理正在运行，完成或中止后才能切换分支。</p> : null}
+            {busy === "checkout" ? <p className="px-space-md pb-2 font-body-xs text-body-xs text-secondary">正在切换…</p> : null}
+            {error ? <p role="alert" className="whitespace-pre-wrap px-space-md pb-2 font-body-xs text-body-xs text-error">{error}</p> : null}
+            {notice ? <p role="status" className="px-space-md pb-2 font-body-xs text-body-xs text-secondary">{notice}</p> : null}
             <div className="flex items-center justify-between border-t border-surface-container-high/40 bg-surface-container-lowest px-space-md py-2 text-on-surface-variant">
                 <a
                     href="#/history"

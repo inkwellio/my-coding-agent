@@ -166,6 +166,12 @@ summary::-webkit-details-marker {
     display: none;
 }
 
+/* One themed keyboard focus ring instead of Chromium's default. Mouse clicks do not trigger it. */
+:where(a, button, summary, [role="button"], [tabindex]):focus-visible {
+    outline: 2px solid rgb(var(--c-primary) / 0.7);
+    outline-offset: 2px;
+}
+
 @layer components {
     .popover-panel {
         @apply max-h-64 overflow-y-auto rounded-xl border border-outline-variant/60 bg-surface-container-high py-1 shadow-[0_8px_24px_rgba(0,0,0,0.25)];
@@ -193,20 +199,6 @@ summary::-webkit-details-marker {
     }
 }
 
-.glow-subtle {
-    box-shadow: 0 0 15px -3px rgba(124, 130, 246, 0.15);
-}
-
-.input-disabled-stripes {
-    background-image: repeating-linear-gradient(
-        -45deg,
-        rgba(255, 255, 255, 0.015),
-        rgba(255, 255, 255, 0.015) 8px,
-        rgba(0, 0, 0, 0.05) 8px,
-        rgba(0, 0, 0, 0.05) 16px
-    );
-}
-
 .titlebar-drag {
     -webkit-app-region: drag;
 }
@@ -215,6 +207,11 @@ summary::-webkit-details-marker {
     -webkit-app-region: no-drag;
 }
 
+/* Model output can use any CJK character, but Noto Sans SC ships only the UI glyph subset.
+   Prefer complete system CJK fonts here so a paragraph does not mix two typefaces. */
+.assistant-markdown {
+    font-family: "Geist", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", "Noto Sans SC", sans-serif;
+}
 .assistant-markdown > :first-child { margin-top: 0; }
 .assistant-markdown > :last-child { margin-bottom: 0; }
 .assistant-markdown p,

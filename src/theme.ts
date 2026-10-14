@@ -15,6 +15,8 @@ export function applyThemePreset(preset: ThemePreset) {
     const light = preset === "soft-light";
     root.dataset.theme = light ? "light" : "dark";
     root.classList.toggle("dark", !light);
+    // Lets the main process paint new windows in this theme before the page loads.
+    window.piDesktop?.setWindowTheme?.(light ? "light" : "dark");
     try {
         localStorage.setItem(STORAGE_KEY, preset);
     } catch {

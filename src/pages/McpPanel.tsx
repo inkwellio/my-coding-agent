@@ -100,61 +100,61 @@ export function McpPanel() {
         finally { setBusy(null); }
     }
 
-    const inputClass = "w-full rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-2 text-sm text-on-surface outline-none focus:border-primary";
-    const buttonClass = "rounded-lg border border-outline-variant/40 px-3 py-1.5 text-xs text-on-surface hover:bg-surface-container-high disabled:opacity-50";
+    const inputClass = "w-full rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-2 font-body-md text-body-md text-on-surface outline-none placeholder:text-outline focus:border-primary";
+    const buttonClass = "rounded-lg border border-outline-variant/40 px-3 py-1.5 font-label-sm text-label-sm text-on-surface hover:bg-surface-container-high disabled:opacity-50";
 
     return (
         <section className="space-y-5 rounded-xl bg-surface-container-low p-space-xl shadow-sm">
             <div className="flex items-center justify-between gap-3">
                 <div>
                     <h2 className="font-headline-sm text-headline-sm font-semibold text-on-surface">MCP 服务</h2>
-                    <p className="mt-1 text-xs text-on-surface-variant">使用 Pi 内置 MCP。默认通过 codemode 调用服务工具。</p>
+                    <p className="mt-1 font-body-xs text-body-xs text-on-surface-variant">使用 Pi 内置 MCP。默认通过 codemode 调用服务工具。</p>
                 </div>
                 <button type="button" className={buttonClass} disabled={!desktop || !!busy} onClick={() => desktop && void run("reload", () => desktop.reloadMcpTools())}>重载工具</button>
             </div>
-            {!desktop ? <p className="text-xs text-on-surface-variant">请在桌面窗口中管理 MCP 服务。</p> : null}
-            {error ? <p role="alert" className="text-xs text-red-400">{error}</p> : null}
-            {note ? <p role="status" className="text-xs text-primary">{note}</p> : null}
+            {!desktop ? <p className="font-body-xs text-body-xs text-on-surface-variant">请在桌面窗口中管理 MCP 服务。</p> : null}
+            {error ? <p role="alert" className="font-body-xs text-body-xs text-error">{error}</p> : null}
+            {note ? <p role="status" className="font-body-xs text-body-xs text-primary">{note}</p> : null}
             <div className="space-y-2">
-                {servers.length === 0 ? <p className="text-xs text-on-surface-variant">尚未添加 MCP 服务。</p> : null}
+                {servers.length === 0 ? <p className="font-body-xs text-body-xs text-on-surface-variant">尚未添加 MCP 服务。</p> : null}
                 {servers.map((server) => (
                     <div key={server.id} className="rounded-lg border border-outline-variant/30 bg-surface-container p-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="min-w-0">
-                                <div className="text-sm font-semibold text-on-surface">{server.name} <span className="ml-2 text-xs font-normal text-on-surface-variant">{server.enabled ? "已启用" : "已停用"} · {server.exposure || "codemode"}</span></div>
-                                <div className="truncate font-mono text-xs text-on-surface-variant">{server.transport === "http" ? server.url : `${server.command} ${server.args?.join(" ") || ""}`}</div>
+                                <div className="font-label-md text-label-md font-semibold text-on-surface">{server.name} <span className="ml-2 font-body-xs text-body-xs font-normal text-on-surface-variant">{server.enabled ? "已启用" : "已停用"} · {server.exposure || "codemode"}</span></div>
+                                <div className="truncate font-code-sm text-code-sm text-on-surface-variant">{server.transport === "http" ? server.url : `${server.command} ${server.args?.join(" ") || ""}`}</div>
                             </div>
                             <div className="flex flex-wrap gap-2">
                                 <button type="button" className={buttonClass} disabled={!!busy} onClick={() => void testServer(server)}>测试连接</button>
                                 <button type="button" className={buttonClass} disabled={!!busy} onClick={() => edit(server)}>编辑</button>
                                 <button type="button" className={buttonClass} disabled={!!busy || !desktop} onClick={() => desktop && void run(server.id, () => desktop.setMcpServerEnabled(server.id, !server.enabled))}>{server.enabled ? "停用" : "启用"}</button>
-                                <button type="button" className={`${buttonClass} text-red-400`} disabled={!!busy || !desktop} onClick={() => desktop && void run(server.id, () => desktop.removeMcpServer(server.id))}>删除</button>
+                                <button type="button" className={`${buttonClass} text-error`} disabled={!!busy || !desktop} onClick={() => desktop && void run(server.id, () => desktop.removeMcpServer(server.id))}>删除</button>
                             </div>
                         </div>
-                        {test?.id === server.id ? <div className={`mt-2 text-xs ${test.result.ok ? "text-primary" : "text-red-400"}`}>{test.result.ok ? `连接成功，发现 ${test.result.tools?.length ?? 0} 个工具：${test.result.tools?.map((tool) => tool.name).join("、") || "无"}` : test.result.message}</div> : null}
+                        {test?.id === server.id ? <div className={`mt-2 font-body-xs text-body-xs ${test.result.ok ? "text-primary" : "text-error"}`}>{test.result.ok ? `连接成功，发现 ${test.result.tools?.length ?? 0} 个工具：${test.result.tools?.map((tool) => tool.name).join("、") || "无"}` : test.result.message}</div> : null}
                     </div>
                 ))}
             </div>
             <div className="space-y-3 rounded-lg border border-outline-variant/30 bg-surface-container p-4">
-                <h3 className="text-sm font-semibold text-on-surface">{editingId ? "编辑 MCP 服务" : "添加 MCP 服务"}</h3>
-                <label className="block space-y-1 text-xs text-on-surface-variant">名称（字母、数字、下划线或连字符）<input className={inputClass} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="例如 filesystem" /></label>
-                <label className="block space-y-1 text-xs text-on-surface-variant">描述<input className={inputClass} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="这个服务提供什么能力" /></label>
+                <h3 className="font-label-md text-label-md font-semibold text-on-surface">{editingId ? "编辑 MCP 服务" : "添加 MCP 服务"}</h3>
+                <label className="block space-y-1 font-label-sm text-label-sm text-on-surface-variant">名称（字母、数字、下划线或连字符）<input className={inputClass} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="例如 filesystem" /></label>
+                <label className="block space-y-1 font-label-sm text-label-sm text-on-surface-variant">描述<input className={inputClass} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="这个服务提供什么能力" /></label>
                 <Select label="工具调用方式" value={form.exposure} options={exposureOptions} onChange={(exposure) => setForm({ ...form, exposure })} />
                 <Select label="连接方式" value={form.transport} options={transportOptions} onChange={(transport) => setForm({ ...form, transport })} />
                 {form.transport === "stdio" ? (
                     <>
-                        <label className="block space-y-1 text-xs text-on-surface-variant">可执行命令<input className={inputClass} value={form.command} onChange={(event) => setForm({ ...form, command: event.target.value })} placeholder="例如 npx 或绝对路径" /></label>
-                        <label className="block space-y-1 text-xs text-on-surface-variant">参数（每行一个）<textarea className={inputClass} rows={3} value={form.args} onChange={(event) => setForm({ ...form, args: event.target.value })} placeholder={"-y\n@modelcontextprotocol/server-filesystem\n/path/to/project"} /></label>
-                        <label className="block space-y-1 text-xs text-on-surface-variant">环境变量（每行 KEY=VALUE）<textarea className={inputClass} rows={2} value={form.env} onChange={(event) => setForm({ ...form, env: event.target.value })} placeholder="可选；已保存的值显示为 ••••••，不修改即沿用原值" /></label>
+                        <label className="block space-y-1 font-label-sm text-label-sm text-on-surface-variant">可执行命令<input className={inputClass} value={form.command} onChange={(event) => setForm({ ...form, command: event.target.value })} placeholder="例如 npx 或绝对路径" /></label>
+                        <label className="block space-y-1 font-label-sm text-label-sm text-on-surface-variant">参数（每行一个）<textarea className={inputClass} rows={3} value={form.args} onChange={(event) => setForm({ ...form, args: event.target.value })} placeholder={"-y\n@modelcontextprotocol/server-filesystem\n/path/to/project"} /></label>
+                        <label className="block space-y-1 font-label-sm text-label-sm text-on-surface-variant">环境变量（每行 KEY=VALUE）<textarea className={inputClass} rows={2} value={form.env} onChange={(event) => setForm({ ...form, env: event.target.value })} placeholder="可选；已保存的值显示为 ••••••，不修改即沿用原值" /></label>
                     </>
                 ) : (
                     <>
-                        <label className="block space-y-1 text-xs text-on-surface-variant">MCP 地址<input className={inputClass} value={form.url} onChange={(event) => setForm({ ...form, url: event.target.value })} placeholder="https://example.com/mcp" /></label>
-                        <label className="block space-y-1 text-xs text-on-surface-variant">请求头（每行 KEY=VALUE）<textarea className={inputClass} rows={2} value={form.headers} onChange={(event) => setForm({ ...form, headers: event.target.value })} placeholder="例如 Authorization=Bearer ...；已保存的值显示为 ••••••，不修改即沿用原值" /></label>
+                        <label className="block space-y-1 font-label-sm text-label-sm text-on-surface-variant">MCP 地址<input className={inputClass} value={form.url} onChange={(event) => setForm({ ...form, url: event.target.value })} placeholder="https://example.com/mcp" /></label>
+                        <label className="block space-y-1 font-label-sm text-label-sm text-on-surface-variant">请求头（每行 KEY=VALUE）<textarea className={inputClass} rows={2} value={form.headers} onChange={(event) => setForm({ ...form, headers: event.target.value })} placeholder="例如 Authorization=Bearer ...；已保存的值显示为 ••••••，不修改即沿用原值" /></label>
                     </>
                 )}
                 <div className="flex gap-2">
-                    <button type="button" disabled={!desktop || !!busy || !/^[A-Za-z0-9_-]+$/.test(form.name.trim()) || !(form.transport === "http" ? form.url.trim() : form.command.trim())} onClick={() => void save()} className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-on-primary disabled:opacity-50">{busy === "save" ? "保存中…" : "保存服务"}</button>
+                    <button type="button" disabled={!desktop || !!busy || !/^[A-Za-z0-9_-]+$/.test(form.name.trim()) || !(form.transport === "http" ? form.url.trim() : form.command.trim())} onClick={() => void save()} className="rounded-lg bg-primary px-4 py-2 font-label-sm text-label-sm font-semibold text-on-primary disabled:opacity-50">{busy === "save" ? "保存中…" : "保存服务"}</button>
                     {editingId ? <button type="button" className={buttonClass} onClick={() => { setEditingId(null); setForm(empty); }}>取消</button> : null}
                 </div>
             </div>

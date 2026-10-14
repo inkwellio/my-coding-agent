@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld("piDesktop", {
     minimize: () => ipcRenderer.send("window:minimize"),
     toggleMaximize: () => ipcRenderer.send("window:toggle-maximize"),
     close: () => ipcRenderer.send("window:close"),
+    setWindowTheme: (theme) => ipcRenderer.send("window:set-theme", theme),
     getSandboxStatus: () => ipcRenderer.invoke("sandbox:get-status"),
     setSandboxEnabled: (enabled) => ipcRenderer.invoke("sandbox:set-enabled", enabled),
     installSandbox: () => ipcRenderer.invoke("sandbox:install"),

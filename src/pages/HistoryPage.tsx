@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { DiffLines } from "../components/DiffLines";
 import { Icon } from "../components/Icon";
 import { Select, type SelectOption } from "../components/ui/Select";
-import { diffTone, GIT_HEAD_CHANGED, relativeTime } from "../git/format";
+import { GIT_HEAD_CHANGED, relativeTime } from "../git/format";
 import type { GitBranches, GitCommit } from "../git/types";
 import { useRpc } from "../rpc/RpcProvider";
 
@@ -141,7 +142,7 @@ export function HistoryPage() {
                                 {commit.refs.length ? (
                                     <span className="flex flex-wrap gap-1 pt-0.5">
                                         {commit.refs.map((item) => (
-                                            <span key={item} className={`rounded px-1 py-0.5 font-code-sm text-[10px] ${refTone(item)}`}>{item}</span>
+                                            <span key={item} className={`rounded px-1 py-0.5 font-code-xs text-code-xs ${refTone(item)}`}>{item}</span>
                                         ))}
                                     </span>
                                 ) : null}
@@ -171,9 +172,7 @@ export function HistoryPage() {
                 </div>
                 <div className="min-h-0 flex-1 select-text overflow-auto bg-surface py-space-sm font-code-sm text-code-sm">
                     {selected ? (
-                        detailText !== null ? detailText.split("\n").map((line, index) => (
-                            <div key={index} className={`whitespace-pre px-space-md ${diffTone(line)}`}>{line || " "}</div>
-                        )) : (
+                        detailText !== null ? <DiffLines text={detailText} /> : (
                             <p className="px-space-md text-on-surface-variant/60">正在读取提交详情…</p>
                         )
                     ) : null}
