@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 import type { CredentialBroadcast, ModelSettings, ProviderInfo, ProviderStatus, SelectedModel, SetModelResult, SetThinkingResult, ThinkingLevel } from "./credentials/types";
-import type { EngineSnapshot, PromptResult, RpcWireEvent, SessionSummary, SessionView, WorkspaceActionResult, WorkspaceState } from "./rpc/types";
+import type { DeleteSessionResult, EngineSnapshot, PromptResult, RpcWireEvent, SessionSummary, SessionView, WorkspaceActionResult, WorkspaceState } from "./rpc/types";
 import type { GitBranches, GitCheckoutRequest, GitCheckoutResult, GitLog, GitLogRequest, GitResult, GitStatus } from "./git/types";
 import type { McpActionResult, McpServer, McpTestResult } from "./mcp/types";
 import type { SandboxActionResult, SandboxSnapshot } from "./sandbox/types";
@@ -25,6 +25,7 @@ export interface PiDesktopApi {
     listSessions: () => Promise<SessionSummary[]>;
     getSessionView: () => Promise<SessionView>;
     changeSession: (sessionId: string | null) => Promise<SessionView>;
+    deleteSession: (sessionId: string) => Promise<DeleteSessionResult>;
     listWorkspaces: () => Promise<WorkspaceState>;
     addWorkspace: () => Promise<WorkspaceActionResult>;
     switchWorkspace: (cwd: string) => Promise<WorkspaceActionResult>;

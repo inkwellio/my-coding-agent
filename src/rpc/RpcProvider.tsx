@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { EMPTY_CREDENTIALS, type EngineSnapshot, type PromptResult, type RpcStatus, type RpcWireEvent, type SessionSummary, type SessionView, type TranscriptBlock, type WorkspaceState } from "./types";
+import { EMPTY_CREDENTIALS, type DeleteSessionResult, type EngineSnapshot, type PromptResult, type RpcStatus, type RpcWireEvent, type SessionSummary, type SessionView, type TranscriptBlock, type WorkspaceState } from "./types";
 import { appendUserBlock, applyRpcEvent, hydrateMessages, settleTranscript } from "./transcript";
 
 interface RpcContextValue {
@@ -20,6 +20,7 @@ interface RpcContextValue {
     removeWorkspace: (cwd: string) => Promise<{ ok: boolean; message?: string }>;
     switchWorkspace: (cwd: string) => Promise<boolean>;
     changeSession: (sessionId: string | null) => Promise<boolean>;
+    deleteSession: (sessionId: string) => Promise<DeleteSessionResult>;
     sendPrompt: (text: string) => Promise<boolean>;
     abort: () => Promise<boolean>;
 }
@@ -269,6 +270,24 @@ export function RpcProvider({ children }: { children: ReactNode }) {
         return loadView(() => desktop.changeSession(sessionId));
     }, [activeSessionId, loadView, workspaceBusy]);
 
+    const deleteSession = useCallback(async (sessionId: string): Promise<DeleteSessionResult> => {
+        const desktop = window.piDesktop;
+        // An already-open window keeps its old preload until the app restarts.
+        if (!desktop?.deleteSession) return { ok: false, message: "请完全退出并重新启动应用后再删除会话" };
+        if (loading.current || workspaceBusy) return { ok: false, message: "正在读取会话，请稍后再试" };
+        let result: DeleteSessionResult;
+        try {
+            result = await desktop.deleteSession(sessionId);
+        } catch (error) {
+            return { ok: false, message: error instanceof Error ? error.message : "删除会话失败" };
+        }
+        if (!result.ok) return result;
+        // The open session was replaced by a new one: show it; otherwise only the list changed.
+        if (result.switched) await loadView(() => desktop.getSessionView());
+        else await refreshSessions();
+        return result;
+    }, [loadView, refreshSessions, workspaceBusy]);
+
     const addWorkspace = useCallback(async () => {
         const desktop = window.piDesktop;
         if (!desktop?.addWorkspace || workspaceAction.current) return false;
@@ -337,9 +356,9 @@ export function RpcProvider({ children }: { children: ReactNode }) {
         () => ({
             status, hydrated, blocks, notice: noticeState?.text ?? null, noticeNeedsCredentials: Boolean(noticeState?.credentials), dismissNotice,
             sessions, activeSessionId, sessionBusy, workspaceState, workspaceBusy,
-            addWorkspace, removeWorkspace, switchWorkspace, changeSession, sendPrompt, abort,
+            addWorkspace, removeWorkspace, switchWorkspace, changeSession, deleteSession, sendPrompt, abort,
         }),
-        [status, hydrated, blocks, noticeState, dismissNotice, sessions, activeSessionId, sessionBusy, workspaceState, workspaceBusy, addWorkspace, removeWorkspace, switchWorkspace, changeSession, sendPrompt, abort],
+        [status, hydrated, blocks, noticeState, dismissNotice, sessions, activeSessionId, sessionBusy, workspaceState, workspaceBusy, addWorkspace, removeWorkspace, switchWorkspace, changeSession, deleteSession, sendPrompt, abort],
     );
 
     return <RpcContext.Provider value={value}>{children}</RpcContext.Provider>;

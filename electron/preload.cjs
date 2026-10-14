@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld("piDesktop", {
     listSessions: () => ipcRenderer.invoke("rpc:list-sessions"),
     getSessionView: () => ipcRenderer.invoke("rpc:get-session-view"),
     changeSession: (sessionId) => ipcRenderer.invoke("rpc:change-session", sessionId),
+    deleteSession: (sessionId) => ipcRenderer.invoke("rpc:delete-session", sessionId),
     listWorkspaces: () => ipcRenderer.invoke("workspaces:list"),
     addWorkspace: () => ipcRenderer.invoke("workspaces:add"),
     switchWorkspace: (cwd) => ipcRenderer.invoke("workspaces:switch", cwd),

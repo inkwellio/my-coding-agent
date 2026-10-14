@@ -1,16 +1,51 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { relativeTime } from "../git/format";
 import type { Route } from "../router";
 import { useRpc } from "../rpc/RpcProvider";
 import { Icon } from "./Icon";
 import { showToast } from "./ShortcutToast";
 
+/** How long the delete button waits for the confirming second click. */
+const DELETE_CONFIRM_MS = 3000;
+
+function TrashIcon() {
+    return (
+        <svg aria-hidden="true" className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9.5h6.6L12 4M6.75 7v4M9.25 7v4" />
+        </svg>
+    );
+}
+
 function workspaceName(cwd: string) {
     return cwd.split(/[\\/]/).filter(Boolean).at(-1) || cwd;
 }
 
 export function Sidebar({ route, width }: { route: Route; width: number }) {
-    const { status, sessions, activeSessionId, sessionBusy, workspaceState, workspaceBusy, switchWorkspace, removeWorkspace, changeSession } = useRpc();
+    const { status, sessions, activeSessionId, sessionBusy, workspaceState, workspaceBusy, switchWorkspace, removeWorkspace, changeSession, deleteSession } = useRpc();
+    const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+    const [deleting, setDeleting] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!confirmDelete) return;
+        const timer = window.setTimeout(() => setConfirmDelete(null), DELETE_CONFIRM_MS);
+        return () => window.clearTimeout(timer);
+    }, [confirmDelete]);
+
+    async function removeSession(id: string, title: string) {
+        // First click arms the button; a second click within DELETE_CONFIRM_MS deletes.
+        if (confirmDelete !== id) {
+            setConfirmDelete(id);
+            return;
+        }
+        setConfirmDelete(null);
+        setDeleting(id);
+        try {
+            const result = await deleteSession(id);
+            showToast(result.ok ? `已删除「${title}」，可在系统回收站中恢复` : result.message ?? "删除会话失败");
+        } finally {
+            setDeleting(null);
+        }
+    }
     const [expandedByPath, setExpandedByPath] = useState<Record<string, boolean>>({});
     const cwd = status.available ? status.cwd : "";
     const paths = workspaceState.paths.length ? workspaceState.paths : cwd ? [cwd] : [];
@@ -122,22 +157,48 @@ export function Sidebar({ route, width }: { route: Route; width: number }) {
                                         </div>
                                         {sessions.length === 0 ? (
                                             <p className="px-space-sm py-space-xs font-body-sm text-body-sm text-outline">暂无历史会话</p>
-                                        ) : sessions.map((session) => (
-                                            <button
-                                                key={session.id}
-                                                type="button"
-                                                title={busyReason ? `${session.title}\n${busyReason}` : session.title}
-                                                aria-current={session.id === activeSessionId ? "page" : undefined}
-                                                disabled={sessionBusy || workspaceBusy || status.engine !== "idle"}
-                                                onClick={() => void openSession(session.id)}
-                                                className={`flex min-w-0 flex-col rounded px-space-sm py-1.5 text-left disabled:cursor-not-allowed disabled:opacity-50 ${session.id === activeSessionId ? "bg-surface-container-high text-on-surface" : "text-on-surface-variant hover:bg-surface-container"}`}
-                                            >
-                                                <span className="w-full truncate font-body-sm text-body-sm">{session.title}</span>
-                                                <span className="font-label-xs text-label-xs text-outline" title={new Date(session.modified).toLocaleString("zh-CN")}>
-                                                    {relativeTime(Math.floor(Date.parse(session.modified) / 1000))}
-                                                </span>
-                                            </button>
-                                        ))}
+                                        ) : sessions.map((session) => {
+                                            const current = session.id === activeSessionId;
+                                            const sessionDisabled = sessionBusy || workspaceBusy || status.engine !== "idle";
+                                            const armed = confirmDelete === session.id;
+                                            return (
+                                                <div
+                                                    key={session.id}
+                                                    className={`group/session flex min-w-0 items-center rounded ${current ? "bg-surface-container-high text-on-surface" : "text-on-surface-variant hover:bg-surface-container"}`}
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        title={busyReason ? `${session.title}\n${busyReason}` : session.title}
+                                                        aria-current={current ? "page" : undefined}
+                                                        disabled={sessionDisabled}
+                                                        onClick={() => void openSession(session.id)}
+                                                        className="flex min-w-0 flex-1 flex-col rounded px-space-sm py-1.5 text-left disabled:cursor-not-allowed disabled:opacity-50"
+                                                    >
+                                                        <span className="w-full truncate font-body-sm text-body-sm">{session.title}</span>
+                                                        <span className="font-label-xs text-label-xs text-outline" title={new Date(session.modified).toLocaleString("zh-CN")}>
+                                                            {relativeTime(Math.floor(Date.parse(session.modified) / 1000))}
+                                                        </span>
+                                                    </button>
+                                                    {/* Opacity, not display:none, so the button stays reachable by keyboard. */}
+                                                    <button
+                                                        type="button"
+                                                        title={sessionDisabled && busyReason ? `删除会话（${busyReason}）` : armed ? "再次点击确认删除" : "删除会话（移到系统回收站）"}
+                                                        aria-label={armed ? `确认删除会话 ${session.title}` : `删除会话 ${session.title}`}
+                                                        disabled={sessionDisabled || deleting !== null}
+                                                        onClick={() => void removeSession(session.id, session.title)}
+                                                        onBlur={() => { if (armed) setConfirmDelete(null); }}
+                                                        className={`mr-0.5 flex h-7 shrink-0 items-center justify-center gap-1 rounded transition-opacity disabled:cursor-not-allowed disabled:opacity-30 ${
+                                                            armed
+                                                                ? "bg-error-container px-1.5 font-label-xs text-label-xs text-on-error-container opacity-100"
+                                                                : "w-7 text-on-surface-variant opacity-0 hover:bg-surface-container-highest hover:text-error focus-visible:opacity-100 group-hover/session:opacity-100"
+                                                        }`}
+                                                    >
+                                                        <TrashIcon />
+                                                        {armed ? <span>确认</span> : null}
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 ) : null}
                             </div>

@@ -5,6 +5,7 @@
  * stdout on `\n` only (attachJsonlLineReader). Do not parse this stream with readline.
  */
 import { existsSync, readFileSync, statSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createSandboxHandshake, SANDBOX_ENV } from "./sandbox-execution.mjs";
@@ -245,7 +246,21 @@ function waitForStartup(promise, signal) {
     });
 }
 
-export function createWindowSession({ webContentsId, cwd, cwdWarning, send, RpcClientCtor, sandboxOptions = null, startupTimeoutMs, credentialReader = readCredentialStatus }) {
+async function listPiSessions(cwd) {
+    const { SessionManager } = await import("@earendil-works/pi-coding-agent");
+    return SessionManager.list(cwd);
+}
+
+/**
+ * `trashFile` removes a deleted session's file. The desktop host passes Electron's
+ * shell.trashItem so a mistaken delete can be restored from the system trash.
+ */
+export function createWindowSession({
+    webContentsId, cwd, cwdWarning, send, RpcClientCtor, sandboxOptions = null, startupTimeoutMs,
+    credentialReader = readCredentialStatus,
+    sessionLister = listPiSessions,
+    trashFile = (filePath) => rm(filePath, { force: true }),
+}) {
     let client = null;
     let activeSessionFile = null;
     let changingSession = false;
@@ -754,8 +769,7 @@ export function createWindowSession({ webContentsId, cwd, cwdWarning, send, RpcC
     }
 
     async function listSessions() {
-        const { SessionManager } = await import("@earendil-works/pi-coding-agent");
-        const entries = await SessionManager.list(cwd);
+        const entries = await sessionLister(cwd);
         return entries.filter((entry) => entry.messageCount > 0 && belongsToWorkspace(entry)).map((entry) => ({
             id: entry.id,
             title: (entry.name || entry.firstMessage?.trim().split("\n")[0] || "未命名会话").slice(0, 120),
@@ -831,14 +845,52 @@ export function createWindowSession({ webContentsId, cwd, cwdWarning, send, RpcC
                 result = await client.newSession();
             } else {
                 if (typeof sessionId !== "string") return { ok: false, message: "无效的会话" };
-                const { SessionManager } = await import("@earendil-works/pi-coding-agent");
-                const available = await SessionManager.list(cwd);
+                const available = await sessionLister(cwd);
                 const target = available.find((entry) => entry.id === sessionId && belongsToWorkspace(entry));
                 if (!target) return { ok: false, message: "会话不存在或不属于当前工作区" };
                 result = await client.switchSession(target.path);
             }
             if (result?.cancelled) return { ok: false, message: "会话切换已取消" };
             return getSessionView();
+        } catch (error) {
+            return { ok: false, message: scrubSecrets(error instanceof Error ? error.message : String(error)).slice(0, 240) };
+        } finally {
+            changingSession = false;
+        }
+    }
+
+    function samePath(a, b) {
+        if (typeof a !== "string" || typeof b !== "string") return false;
+        const left = resolve(a);
+        const right = resolve(b);
+        return process.platform === "win32" ? left.toLowerCase() === right.toLowerCase() : left === right;
+    }
+
+    /** Deletes a session of this workspace; the open one is first replaced by a new empty session. */
+    async function deleteSession(sessionId) {
+        if (typeof sessionId !== "string" || !sessionId) return { ok: false, message: "无效的会话" };
+        if (changingSession || promptBusy || engine === "chatting") {
+            return { ok: false, message: "请等待当前回答结束后再删除会话" };
+        }
+        if (!client || !ready || stopping) return { ok: false, message: detail || "引擎未连接" };
+        changingSession = true;
+        try {
+            const available = await sessionLister(cwd);
+            const target = available.find((entry) => entry.id === sessionId && belongsToWorkspace(entry));
+            if (!target?.path) return { ok: false, message: "会话不存在或不属于当前工作区" };
+            const state = await client.getState();
+            if (state?.isStreaming) return { ok: false, message: "请等待当前回答结束后再删除会话" };
+            let switched = false;
+            if (state?.sessionId === sessionId || samePath(state?.sessionFile, target.path)) {
+                // Leave the session first so Pi never writes to the file after it is removed.
+                const result = await client.newSession();
+                if (result?.cancelled) return { ok: false, message: "会话切换已取消，未删除" };
+                const next = await client.getState();
+                activeSessionFile = typeof next?.sessionFile === "string" ? next.sessionFile : null;
+                switched = true;
+            }
+            await trashFile(target.path);
+            return { ok: true, switched };
         } catch (error) {
             return { ok: false, message: scrubSecrets(error instanceof Error ? error.message : String(error)).slice(0, 240) };
         } finally {
@@ -859,6 +911,7 @@ export function createWindowSession({ webContentsId, cwd, cwdWarning, send, RpcC
         listSessions,
         getSessionView,
         changeSession,
+        deleteSession,
         reloadMcp,
         setSandbox,
         isStopping: () => stopping,

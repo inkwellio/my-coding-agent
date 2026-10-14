@@ -59,6 +59,13 @@ export type SessionView =
     | { ok: true; sessionId: string | null; messages: HistoryMessage[] }
     | { ok: false; message: string };
 
+/** `switched` is true when the deleted session was open and a new empty one replaced it. */
+export interface DeleteSessionResult {
+    ok: boolean;
+    switched?: boolean;
+    message?: string;
+}
+
 /** Subset of pi RPC stdout events forwarded to the renderer. */
 export interface RpcWireEvent {
     type: string;

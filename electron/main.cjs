@@ -126,6 +126,7 @@ function createRpcSession(win, host, cwd, cwdWarning = null, sandboxOptions = nu
         cwd,
         cwdWarning,
         sandboxOptions,
+        trashFile: (filePath) => shell.trashItem(filePath),
         send(channel, payload) {
             try {
                 if (win.isDestroyed() || win.webContents.isDestroyed()) return;
@@ -463,6 +464,12 @@ ipcMain.handle("rpc:get-session-view", async (event) => {
 ipcMain.handle("rpc:change-session", async (event, sessionId) => {
     const session = sessions.get(event.sender.id);
     return session ? session.changeSession(sessionId) : { ok: false, message: "这个窗口没有 RPC 会话" };
+});
+
+ipcMain.handle("rpc:delete-session", async (event, sessionId) => {
+    if (sandboxTasks.has(event.sender.id) || workspaceTasks.has(event.sender.id)) return { ok: false, message: "正在更新工作区，请稍后再试" };
+    const session = sessions.get(event.sender.id);
+    return session ? session.deleteSession(sessionId) : { ok: false, message: "这个窗口没有 RPC 会话" };
 });
 
 ipcMain.handle("mcp:list", () => getMcpStore().list());
