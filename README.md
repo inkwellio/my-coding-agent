@@ -20,7 +20,13 @@
 
 ## 截图
 
-> 截图待补充。
+| 模型配置 | API Key 管理 |
+| --- | --- |
+| ![模型配置](docs/images/models.png) | ![API Key 管理](docs/images/api-keys.png) |
+| **MCP 服务** | **切换分支** |
+| ![MCP 服务](docs/images/mcp.png) | ![切换分支](docs/images/branch-switcher.png) |
+| **外观主题** | **快捷键** |
+| ![外观主题](docs/images/appearance.png) | ![快捷键](docs/images/keybindings.png) |
 
 ## 环境要求
 
