@@ -20,6 +20,7 @@
 - `npm run typecheck`：检查 TypeScript 类型，不生成文件。
 - `npm run build`：检查类型并将渲染界面构建到 `dist/`。
 - `npm start`：构建并启动 Electron。
+- `npm run dist` / `npm run dist:dir`：用 electron-builder 打包安装包或未压缩目录到 `release/`；打包后用 `scripts/packaged-smoke.mjs` 验证 Pi RPC 子进程能否启动。推送 `v*` 标签会触发三平台发布工作流。
 - `npm test`：运行所有可离线执行的冒烟测试（CI 同样运行此命令）。
 - `npm run test:git` / `npm run test:mcp`：运行 Git 和 MCP 冒烟测试。
 - `npm run test:sandbox`：验证隔离策略、失败阻断、超时、取消及 RPC 重启；`npm run test:sandbox:integration`：在已安装系统依赖的机器上验证真实隔离。

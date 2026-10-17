@@ -4,7 +4,7 @@
 
 基于 [Pi](https://github.com/earendil-works/pi) 编程代理引擎的桌面 AI 编程工作台，使用 Electron + React + TypeScript 构建。
 
-> **English summary:** An unofficial desktop AI coding agent built on the Pi coding-agent engine (Electron + Vite + React + Tailwind + TypeScript). It adds a desktop workspace UI with multi-workspace sessions, Git review/commit, branch switching, commit history, MCP server management, model credential management and optional command sandboxing. Run from source with Node.js ≥ 22.19: `npm ci && npm run dev`.
+> **English summary:** An unofficial desktop AI coding agent built on the Pi coding-agent engine (Electron + Vite + React + Tailwind + TypeScript). It adds a desktop workspace UI with multi-workspace sessions, Git review/commit, branch switching, commit history, MCP server management, model credential management and optional command sandboxing. Download installers for Windows / macOS / Linux from [Releases](https://github.com/inkwellio/my-coding-agent/releases) (unsigned, Node.js not required), or run from source with Node.js ≥ 22.19: `npm ci && npm run dev`.
 
 > [!NOTE]
 > 本项目为**非官方**项目，与 Pi / [earendil-works](https://github.com/earendil-works) 无任何隶属或背书关系。界面中的 "Pi" 仅指所使用的引擎。
@@ -28,14 +28,34 @@
 | **外观主题** | **快捷键** |
 | ![外观主题](docs/images/appearance.png) | ![快捷键](docs/images/keybindings.png) |
 
-## 环境要求
+## 下载安装
+
+从 [Releases](https://github.com/inkwellio/my-coding-agent/releases/latest) 下载对应平台的安装包。安装包已内置 Pi 引擎和运行时，**无需安装 Node.js**。
+
+| 平台 | 文件 |
+| --- | --- |
+| Windows x64 | `*-win-x64-setup.exe`（安装版）、`*-win-x64-portable.exe`（便携版）、`*-win-x64.zip` |
+| macOS（Apple Silicon / Intel） | `*-mac-arm64.dmg` / `*-mac-x64.dmg`（另有 zip） |
+| Linux x64 | `*-linux-x86_64.AppImage`、`*-linux-amd64.deb` |
+
+> [!WARNING]
+> 安装包**未签名**，首次打开会有系统提示：
+> - **Windows**：SmartScreen 提示时点击「更多信息」→「仍要运行」。
+> - **macOS**：在「应用程序」中右键点击 App →「打开」；若提示「已损坏」，执行 `xattr -dr com.apple.quarantine "/Applications/My Coding Agent.app"`。
+> - **Linux**：AppImage 需先 `chmod +x`；deb 用 `sudo apt install ./my-coding-agent-*-linux-amd64.deb` 安装。
+
+使用 Git 功能需要系统已安装 Git；Windows 上代理执行 Bash 命令需要 [Git for Windows](https://git-scm.com/download/win)。
+
+## 从源码运行
+
+### 环境要求
 
 - Node.js **22.19 或更高版本**
 - npm 10+
 - Git（用于 Git 相关功能）
 - 可选：启用命令沙盒时，Linux 需安装 Bubblewrap、socat 和 ripgrep；macOS 使用系统沙盒；Windows 支持仍处于 alpha 阶段。详见 [架构文档](./docs/ARCHITECTURE.md#沙盒)。
 
-## 快速开始
+### 快速开始
 
 ```bash
 git clone https://github.com/inkwellio/my-coding-agent.git
@@ -52,10 +72,10 @@ npm run dev
 | `npm run build` | 类型检查并将渲染界面构建到 `dist/` |
 | `npm start` | 构建后启动 Electron |
 | `npm test` | 运行所有可离线执行的冒烟测试 |
+| `npm run dist` | 使用 electron-builder 打包当前平台的安装包到 `release/` |
+| `npm run dist:dir` | 仅生成未压缩的应用目录（调试打包用） |
 
 在 Chromium 沙盒无法启动的 Linux 容器中，可用 `ELECTRON_NO_SANDBOX=1 npm run dev` 启动（会同时关闭 Electron 渲染进程沙盒，仅用于此类环境）。
-
-> 目前尚未提供打包好的安装包，只能从源码运行。
 
 ## 配置模型 API Key
 

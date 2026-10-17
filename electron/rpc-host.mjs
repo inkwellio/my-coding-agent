@@ -4,10 +4,11 @@
  * Uses the official RpcClient, which spawns `node <pi> --mode rpc` and splits
  * stdout on `\n` only (attachJsonlLineReader). Do not parse this stream with readline.
  */
+import { spawn } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { delimiter, dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createSandboxHandshake, SANDBOX_ENV } from "./sandbox-execution.mjs";
 
 const emptyCredentials = {
@@ -76,6 +77,85 @@ export function resolvePiCli() {
     const onPath = findOnPath(process.platform === "win32" ? "pi.cmd" : "pi");
     if (onPath && isNodeScript(onPath)) return onPath;
     return null;
+}
+
+/**
+ * The upstream RpcClient spawns the literal command `node`, which is missing on
+ * machines without Node.js (the normal case for a packaged desktop build). Inside
+ * Electron, spawn Electron's own Node runtime instead (ELECTRON_RUN_AS_NODE=1)
+ * through pi-bootstrap.mjs. Outside Electron (tests, scripts) the upstream class
+ * is used unchanged. Set PI_USE_SYSTEM_NODE=1 to force the system `node`.
+ */
+export function piNodeRuntime() {
+    if (!process.versions.electron || process.env.PI_USE_SYSTEM_NODE === "1") return null;
+    return {
+        command: process.execPath,
+        bootstrap: fileURLToPath(new URL("./pi-bootstrap.mjs", import.meta.url)),
+        env: { ELECTRON_RUN_AS_NODE: "1" },
+    };
+}
+
+export async function loadRpcClientClass() {
+    const { RpcClient } = await import("@earendil-works/pi-coding-agent");
+    const runtime = piNodeRuntime();
+    if (!runtime) return RpcClient;
+    const jsonlUrl = pathToFileURL(join(packageRoot(), "dist", "modes", "rpc", "jsonl.js")).href;
+    const { attachJsonlLineReader } = await import(jsonlUrl);
+
+    // Mirrors RpcClient.start() from @earendil-works/pi-coding-agent 1.1.0, changing only the spawned command.
+    return class ElectronRpcClient extends RpcClient {
+        async start() {
+            if (this.process) throw new Error("Client already started");
+            this.exitError = null;
+            const cliPath = this.options.cliPath ?? "dist/cli.js";
+            const args = ["--mode", "rpc"];
+            if (this.options.provider) args.push("--provider", this.options.provider);
+            if (this.options.model) args.push("--model", this.options.model);
+            if (this.options.args) args.push(...this.options.args);
+            const childProcess = spawn(runtime.command, [runtime.bootstrap, cliPath, ...args], {
+                cwd: this.options.cwd,
+                env: { ...process.env, ...this.options.env, ...runtime.env },
+                stdio: ["pipe", "pipe", "pipe"],
+                windowsHide: true,
+            });
+            this.process = childProcess;
+            childProcess.stderr?.on("data", (data) => {
+                this.stderr += data.toString();
+                try {
+                    process.stderr.write(data);
+                } catch {
+                    // A packaged GUI app may have no usable stderr.
+                }
+            });
+            childProcess.once("exit", (code, signal) => {
+                if (this.process !== childProcess) return;
+                const error = this.createProcessExitError(code, signal);
+                this.exitError = error;
+                this.rejectPendingRequests(error);
+            });
+            childProcess.once("error", (error) => {
+                if (this.process !== childProcess) return;
+                const processError = new Error(`Agent process error: ${error.message}. Stderr: ${this.stderr}`);
+                this.exitError = processError;
+                this.rejectPendingRequests(processError);
+            });
+            childProcess.stdin?.on("error", (error) => {
+                if (this.process !== childProcess) return;
+                const stdinError = this.exitError ?? new Error(`Agent process stdin error: ${error.message}. Stderr: ${this.stderr}`);
+                this.exitError = stdinError;
+                this.rejectPendingRequests(stdinError);
+            });
+            this.stopReadingStdout = attachJsonlLineReader(childProcess.stdout, (line) => {
+                this.handleLine(line);
+            });
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            if (this.process.exitCode !== null) {
+                const error = this.exitError ?? this.createProcessExitError(this.process.exitCode, this.process.signalCode);
+                this.exitError = error;
+                throw error;
+            }
+        }
+    };
 }
 
 export function resolveProjectCwd() {
@@ -468,7 +548,7 @@ export function createWindowSession({
 
         try {
             const [RpcClient, creds] = await waitForStartup(Promise.all([
-                RpcClientCtor ? Promise.resolve(RpcClientCtor) : import("@earendil-works/pi-coding-agent").then((module) => module.RpcClient),
+                RpcClientCtor ? Promise.resolve(RpcClientCtor) : loadRpcClientClass(),
                 credentialReader(),
             ]), controller.signal);
             credentials = creds;

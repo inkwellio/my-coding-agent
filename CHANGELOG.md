@@ -4,11 +4,18 @@
 
 ## [未发布]
 
+## [0.1.0] - 2026-10-17
+
+首个桌面安装包版本（未签名），包含此前所有未发布的变更。
+
 ### 新增
 
+- 使用 electron-builder 打包：Windows（NSIS 安装包、便携版、zip）、macOS（dmg、zip，arm64 与 x64）、Linux（AppImage、deb）。
+- 安装包内置 Pi 引擎；在 Electron 中通过 `ELECTRON_RUN_AS_NODE` 以应用自带的 Node 运行时启动 Pi RPC 子进程（`electron/pi-bootstrap.mjs`），用户无需安装 Node.js。
+- 打包后的应用以用户主目录作为默认工作区，并在 macOS/Linux 上继承登录 Shell 的 `PATH`。
+- 新增 `npm run dist` / `npm run dist:dir`、打包冒烟测试 `scripts/packaged-smoke.mjs`，以及推送 `v*` 标签触发的三平台发布工作流 `.github/workflows/release.yml`。
 - 开源准备：添加 MIT `LICENSE`、`THIRD_PARTY_NOTICES.md` 及字体许可证文本；添加 GitHub Actions CI（类型检查、构建、冒烟测试）和 `npm test` 脚本；补充 `package.json` 的 license、repository、engines 等字段。
 - 重写 `README.md`（简介、功能、快速开始、API Key 配置、许可证），将架构细节移至 `docs/ARCHITECTURE.md`。
-
 - 接入 `@anthropic-ai/sandbox-runtime`，支持在桌面设置中启用代理 Shell 命令与内置终端隔离；默认禁止外网访问，限制写入范围并保护凭据及宿主代码。
 - 添加沙盒状态 IPC、Pi 扩展启动确认、可取消的 Windows 组件安装，以及沙盒冒烟测试和系统集成测试命令。
 - 添加中文贡献指南 `AGENTS.md`，说明项目结构、开发命令、代码规范、测试要求及凭据安全约定。

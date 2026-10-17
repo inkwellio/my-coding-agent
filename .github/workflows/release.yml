@@ -1,0 +1,117 @@
+name: Release
+
+on:
+    push:
+        tags: ["v*"]
+    # Validate packaging on PRs that touch it (build + smoke test only; nothing is published).
+    pull_request:
+        branches: [main]
+        paths:
+            - "package.json"
+            - "package-lock.json"
+            - "electron/**"
+            - "scripts/packaged-smoke.mjs"
+            - ".github/workflows/release.yml"
+    workflow_dispatch:
+        inputs:
+            tag:
+                description: "Existing tag to (re)publish, e.g. v0.1.0. Leave empty to build artifacts only."
+                required: false
+                default: ""
+
+permissions:
+    contents: write
+
+concurrency:
+    group: release-${{ github.ref }}-${{ inputs.tag }}
+    cancel-in-progress: false
+
+jobs:
+    build:
+        name: Build (${{ matrix.os }})
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - os: ubuntu-latest
+                      builder: --linux
+                      exe: release/linux-unpacked/my-coding-agent
+                      app: release/linux-unpacked/resources/app
+                    - os: windows-latest
+                      builder: --win
+                      exe: release/win-unpacked/My Coding Agent.exe
+                      app: release/win-unpacked/resources/app
+                    - os: macos-latest
+                      builder: --mac
+                      exe: release/mac-arm64/My Coding Agent.app/Contents/MacOS/My Coding Agent
+                      app: release/mac-arm64/My Coding Agent.app/Contents/Resources/app
+        runs-on: ${{ matrix.os }}
+        env:
+            CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  ref: ${{ inputs.tag || github.ref }}
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Build renderer
+              run: npm run build
+
+            - name: Package (unsigned)
+              run: npx electron-builder ${{ matrix.builder }} --publish never
+
+            - name: Smoke test packaged app (Pi RPC child)
+              shell: bash
+              env:
+                  ELECTRON_RUN_AS_NODE: "1"
+              run: '"${{ matrix.exe }}" scripts/packaged-smoke.mjs "${{ matrix.app }}"'
+
+            - name: Upload artifacts
+              uses: actions/upload-artifact@v4
+              with:
+                  name: dist-${{ matrix.os }}
+                  if-no-files-found: error
+                  path: |
+                      release/*.exe
+                      release/*.zip
+                      release/*.dmg
+                      release/*.AppImage
+                      release/*.deb
+
+    release:
+        name: Publish GitHub Release
+        needs: build
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  ref: ${{ inputs.tag || github.ref }}
+
+            - uses: actions/download-artifact@v4
+              with:
+                  path: artifacts
+                  pattern: dist-*
+                  merge-multiple: true
+
+            - name: Create or update release
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  TAG: ${{ inputs.tag || github.ref_name }}
+              run: |
+                  ls -la artifacts
+                  if gh release view "$TAG" >/dev/null 2>&1; then
+                      gh release upload "$TAG" artifacts/* --clobber
+                  else
+                      gh release create "$TAG" artifacts/* \
+                          --title "My Coding Agent $TAG" \
+                          --notes-file .github/release-notes.md \
+                          --verify-tag
+                  fi
