@@ -3,7 +3,20 @@
     "version": "0.1.0",
     "private": true,
     "type": "module",
-    "description": "Pi desktop coding agent — main workspace shell",
+    "description": "Desktop AI coding agent built on Pi (unofficial) — Electron + React + TypeScript",
+    "license": "MIT",
+    "author": "inkwellio",
+    "homepage": "https://github.com/inkwellio/my-coding-agent#readme",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/inkwellio/my-coding-agent.git"
+    },
+    "bugs": {
+        "url": "https://github.com/inkwellio/my-coding-agent/issues"
+    },
+    "engines": {
+        "node": ">=22.19"
+    },
     "main": "electron/main.cjs",
     "scripts": {
         "dev": "cross-env ELECTRON_DEV=1 concurrently -k -n vite,electron \"vite --host 127.0.0.1 --port 5173 --strictPort\" \"wait-on tcp:127.0.0.1:5173 && electron .\"",
@@ -15,7 +28,8 @@
         "test:mcp": "node scripts/mcp-smoke.mjs",
         "test:sandbox": "node scripts/sandbox-smoke.mjs",
         "test:sandbox:integration": "node scripts/sandbox-integration-smoke.mjs",
-        "test:rpc-reconnect": "node scripts/rpc-reconnect-smoke.mjs"
+        "test:rpc-reconnect": "node scripts/rpc-reconnect-smoke.mjs",
+        "test": "node scripts/credentials-smoke.mjs && node scripts/markdown-smoke.mjs && node scripts/hash-query-smoke.mjs && node scripts/rpc-host-smoke.mjs && node scripts/rpc-transcript-smoke.mjs && node scripts/deepseek-reconnect-smoke.mjs && node scripts/workspace-store-smoke.mjs && node scripts/session-delete-smoke.mjs && npm run test:git && npm run test:mcp && npm run test:sandbox && npm run test:rpc-reconnect"
     },
     "dependencies": {
         "@anthropic-ai/sandbox-runtime": "0.0.78",
