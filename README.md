@@ -1,5 +1,7 @@
 # my-coding-agent
 
+作者 X 主页：[@hunter_jia228](https://x.com/hunter_jia228)
+
 基于 [Pi](https://github.com/earendil-works/pi) 编程代理引擎的桌面 AI 编程工作台，使用 Electron + React + TypeScript 构建。
 
 > **English summary:** An unofficial desktop AI coding agent built on the Pi coding-agent engine (Electron + Vite + React + Tailwind + TypeScript). It adds a desktop workspace UI with multi-workspace sessions, Git review/commit, branch switching, commit history, MCP server management, model credential management and optional command sandboxing. Run from source with Node.js ≥ 22.19: `npm ci && npm run dev`.
