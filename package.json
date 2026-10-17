@@ -29,7 +29,9 @@
         "test:sandbox": "node scripts/sandbox-smoke.mjs",
         "test:sandbox:integration": "node scripts/sandbox-integration-smoke.mjs",
         "test:rpc-reconnect": "node scripts/rpc-reconnect-smoke.mjs",
-        "test": "node scripts/credentials-smoke.mjs && node scripts/markdown-smoke.mjs && node scripts/hash-query-smoke.mjs && node scripts/rpc-host-smoke.mjs && node scripts/rpc-transcript-smoke.mjs && node scripts/deepseek-reconnect-smoke.mjs && node scripts/workspace-store-smoke.mjs && node scripts/session-delete-smoke.mjs && npm run test:git && npm run test:mcp && npm run test:sandbox && npm run test:rpc-reconnect"
+        "test": "node scripts/credentials-smoke.mjs && node scripts/markdown-smoke.mjs && node scripts/hash-query-smoke.mjs && node scripts/rpc-host-smoke.mjs && node scripts/rpc-transcript-smoke.mjs && node scripts/deepseek-reconnect-smoke.mjs && node scripts/workspace-store-smoke.mjs && node scripts/session-delete-smoke.mjs && npm run test:git && npm run test:mcp && npm run test:sandbox && npm run test:rpc-reconnect",
+        "dist": "npm run build && electron-builder --publish never",
+        "dist:dir": "npm run build && electron-builder --dir --publish never"
     },
     "dependencies": {
         "@anthropic-ai/sandbox-runtime": "0.0.78",
@@ -46,10 +48,110 @@
         "concurrently": "^10.0.5",
         "cross-env": "^10.1.0",
         "electron": "^44.4.3",
+        "electron-builder": "^26.15.3",
         "postcss": "^8.5.28",
         "tailwindcss": "^3.4.19",
         "typescript": "^7.0.2",
         "vite": "^8.3.0",
         "wait-on": "^9.1.0"
+    },
+    "build": {
+        "appId": "io.github.inkwellio.mycodingagent",
+        "productName": "My Coding Agent",
+        "copyright": "Copyright (c) 2026 inkwellio",
+        "asar": false,
+        "npmRebuild": false,
+        "directories": {
+            "output": "release",
+            "buildResources": "build"
+        },
+        "files": [
+            "dist/**/*",
+            "electron/**/*",
+            "package.json",
+            "LICENSE",
+            "THIRD_PARTY_NOTICES.md",
+            "!**/*.map",
+            "!**/*.d.ts",
+            "!**/*.d.ts.map"
+        ],
+        "artifactName": "my-coding-agent-${version}-${os}-${arch}.${ext}",
+        "publish": null,
+        "win": {
+            "target": [
+                {
+                    "target": "nsis",
+                    "arch": [
+                        "x64"
+                    ]
+                },
+                {
+                    "target": "portable",
+                    "arch": [
+                        "x64"
+                    ]
+                },
+                {
+                    "target": "zip",
+                    "arch": [
+                        "x64"
+                    ]
+                }
+            ]
+        },
+        "nsis": {
+            "oneClick": false,
+            "perMachine": false,
+            "allowToChangeInstallationDirectory": true,
+            "artifactName": "my-coding-agent-${version}-win-${arch}-setup.${ext}"
+        },
+        "portable": {
+            "artifactName": "my-coding-agent-${version}-win-${arch}-portable.${ext}"
+        },
+        "mac": {
+            "target": [
+                {
+                    "target": "dmg",
+                    "arch": [
+                        "arm64",
+                        "x64"
+                    ]
+                },
+                {
+                    "target": "zip",
+                    "arch": [
+                        "arm64",
+                        "x64"
+                    ]
+                }
+            ],
+            "category": "public.app-category.developer-tools",
+            "identity": null,
+            "hardenedRuntime": false,
+            "gatekeeperAssess": false
+        },
+        "dmg": {
+            "writeUpdateInfo": false
+        },
+        "linux": {
+            "target": [
+                {
+                    "target": "AppImage",
+                    "arch": [
+                        "x64"
+                    ]
+                },
+                {
+                    "target": "deb",
+                    "arch": [
+                        "x64"
+                    ]
+                }
+            ],
+            "category": "Development",
+            "executableName": "my-coding-agent",
+            "maintainer": "inkwellio <23307877+inkwellio@users.noreply.github.com>",
+            "synopsis": "Desktop AI coding agent built on Pi"
+        }
     }
 }

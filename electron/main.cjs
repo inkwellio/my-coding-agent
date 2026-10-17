@@ -9,6 +9,38 @@ const { createMcpStore } = require("./mcp-service.cjs");
 
 const isDev = process.env.ELECTRON_DEV === "1";
 
+/**
+ * A packaged app starts with cwd "/" (macOS/Linux) or the install folder (Windows),
+ * and macOS GUI apps inherit only a minimal PATH. Start from the home folder and
+ * import the login shell PATH so Git and the agent's shell commands behave like a terminal.
+ */
+function prepareStandaloneEnvironment() {
+    if (!app.isPackaged) return;
+    if (!process.env.PI_PROJECT_CWD) {
+        try {
+            process.chdir(os.homedir());
+        } catch {
+            // Keep the original cwd.
+        }
+    }
+    if (process.platform !== "darwin" && process.platform !== "linux") return;
+    try {
+        const { execFileSync } = require("child_process");
+        const loginShell = process.env.SHELL || (process.platform === "darwin" ? "/bin/zsh" : "/bin/sh");
+        const output = execFileSync(loginShell, ["-ilc", "printf '__MCA_PATH__%s__MCA_PATH__' \"$PATH\""], {
+            encoding: "utf8",
+            timeout: 5000,
+            stdio: ["ignore", "pipe", "ignore"],
+        });
+        const match = output.match(/__MCA_PATH__(.*?)__MCA_PATH__/s);
+        if (match && match[1]) process.env.PATH = match[1];
+    } catch {
+        // Best effort: keep the inherited PATH.
+    }
+}
+
+prepareStandaloneEnvironment();
+
 if (process.env.ELECTRON_NO_SANDBOX === "1") {
     app.commandLine.appendSwitch("no-sandbox");
     app.commandLine.appendSwitch("disable-dev-shm-usage");

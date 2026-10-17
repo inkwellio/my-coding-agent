@@ -42,7 +42,24 @@ npm run test:rpc-reconnect       # 验证启动失败清理、时限、重试上
 
 ### 打包
 
-**计划中，尚未实现。** 目标是将通过 build-binaries 构建的独立 `pi` 打包到 `extraResources` 中，不强制依赖 WSL 或 Docker。仓库目前不包含打包配置（如 electron-builder），只能从源码运行；运行时使用依赖中附带的 `pi` 入口（见下文「pi 的查找顺序」）。
+使用 [electron-builder](https://www.electron.build/) 打包，配置位于 `package.json` 的 `build` 字段，产物输出到 `release/`：
+
+- Windows：NSIS 安装包、便携版 exe、zip（x64）
+- macOS：dmg、zip（arm64 与 x64）
+- Linux：AppImage、deb（x64）
+
+本地打包：`npm run dist`（当前平台全部目标）或 `npm run dist:dir`（仅生成未压缩的目录，便于调试）。推送 `v*` 标签时，`.github/workflows/release.yml` 会在三个平台上构建、运行打包冒烟测试，并把安装包上传到对应的 GitHub Release。安装包目前**未签名**。
+
+Pi 引擎随应用一起打包：`@earendil-works/pi-coding-agent` 作为生产依赖被复制到 `resources/app/node_modules/`（关闭了 asar，Pi 及其子依赖、`@anthropic-ai/sandbox-runtime` 的原生二进制都以普通文件形式存在，可被子进程直接读取和执行）。上游 `RpcClient` 固定使用 `node` 命令启动 Pi，而用户机器上通常没有 Node.js；因此在 Electron 中运行时，`electron/rpc-host.mjs` 的 `loadRpcClientClass()` 会返回一个子类，改为以 `ELECTRON_RUN_AS_NODE=1` 运行应用自身的可执行文件，并通过 `electron/pi-bootstrap.mjs` 加载 Pi CLI。引导脚本会在启动 Pi 前删除 `ELECTRON_RUN_AS_NODE`，避免该变量泄漏到代理执行的命令中。设置 `PI_USE_SYSTEM_NODE=1` 可强制改用系统 `node`。
+
+打包后的应用还会：在未设置 `PI_PROJECT_CWD` 时以用户主目录作为初始工作区；在 macOS/Linux 上读取登录 Shell 的 `PATH`，使 Git 和代理命令的行为与终端一致。
+
+`scripts/packaged-smoke.mjs` 用打包后的可执行文件验证上述流程（定位资源中的 Pi CLI、启动 RPC 子进程、`get_state`、检查环境变量不泄漏）：
+
+```bash
+npm run dist:dir
+ELECTRON_RUN_AS_NODE=1 release/linux-unpacked/my-coding-agent scripts/packaged-smoke.mjs release/linux-unpacked/resources/app
+```
 
 ### 实施阶段
 
@@ -50,6 +67,7 @@ npm run test:rpc-reconnect       # 验证启动失败清理、时限、重试上
 2. 凭据 IPC。`#/credentials` 列出所有支持单个 API 密钥的内置提供商，并支持保存或清除密钥。
 3. 启动真实 RpcClient。已实现每个窗口的最小交互循环（启动、`get_state`、`prompt`、流式输出、停止）。
 4. 可选命令沙盒。可通过「设置 → 权限」启用，提供实时状态和 Windows 安装流程。
+5. 桌面安装包。electron-builder 打包三平台安装包，内置 Pi 引擎，无需系统 Node.js。
 
 ## RPC 引擎
 
@@ -67,7 +85,7 @@ npm run test:rpc-reconnect       # 验证启动失败清理、时限、重试上
 
 在一个轮次尚未结束时再次发送消息，会调用带有 `streamingBehavior: "steer"` 的 `prompt`。steer 用于在轮次中途补充引导：pi 会在当前助手轮次的工具调用完成后、下一次模型请求之前传递该消息。只有当 `get_state` 表明会话未在流式输出时，才会使用普通 `prompt`（不带 `streamingBehavior`）；若缺少此字段，第二次 `prompt` 会失败。输入框在 `对话中` 仍保持可用，以便发送补充引导；仅在引擎重连时禁用。
 
-客户端使用 `@earendil-works/pi-coding-agent` 提供的官方 `RpcClient`。它启动 `node <pi> --mode rpc`，并且仅按 `\n` 分割标准输出。这与包中 `pi` 命令使用的是同一入口。此代码不使用 Node `readline` 来划分 JSONL 消息。
+客户端使用 `@earendil-works/pi-coding-agent` 提供的官方 `RpcClient`（在 Electron 中使用仅替换了启动命令的子类）。它启动 `node <pi> --mode rpc`，并且仅按 `\n` 分割标准输出。这与包中 `pi` 命令使用的是同一入口。此代码不使用 Node `readline` 来划分 JSONL 消息。
 
 pi 的查找顺序如下：
 
@@ -75,7 +93,7 @@ pi 的查找顺序如下：
 2. 依赖中附带的入口：`node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js`。
 3. `PATH` 中的 `pi`，其文件必须是 Node 脚本（通过 shebang 或 `.js` / `.mjs` / `.cjs` 扩展名识别）。
 
-`RpcClient` 始终使用 `node` 启动该文件，因此独立的 bun 二进制文件不能作为此处有效的 `PI_CLI`。将 build-binaries 构建的 `pi` 打包到 `extraResources` 是后续步骤。
+该文件始终由 Node 运行时启动（开发时在 Electron 中同样使用 Electron 自带的 Node，见「打包」），因此独立的 bun 二进制文件不能作为此处有效的 `PI_CLI`。
 
 如果 `PI_PROJECT_CWD` 指向一个目录，则将其用作初始工作目录；否则使用进程当前工作目录（从项目根目录运行 `npm run dev` 时即使用该目录）。标题栏的文件夹按钮通过原生选择器添加目录；侧边栏列出已添加的工作区，并在这些工作区之间切换活动 RPC 会话。工作区路径和上次活动路径保存在 Electron 用户数据目录的 `workspaces.json` 中。每个 Pi 子进程都使用 `--continue` 启动，并使用用户 `~/.pi/agent/sessions/` 目录下按工作目录分组的 Pi 默认会话存储。会话文件不会写入项目目录。
 
